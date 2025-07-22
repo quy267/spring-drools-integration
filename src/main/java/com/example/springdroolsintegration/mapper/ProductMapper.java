@@ -23,16 +23,16 @@ public interface ProductMapper {
      * @return The recommendation customer entity
      */
     @Mapping(target = "id", source = "customerId")
-    @Mapping(target = "name", expression = "java(request.getFirstName() + \" \" + request.getLastName())")
-    @Mapping(target = "age", source = "age")
+    @Mapping(target = "firstName", source = "firstName")
+    @Mapping(target = "lastName", source = "lastName")
     @Mapping(target = "gender", source = "gender")
     @Mapping(target = "email", source = "email")
-    @Mapping(target = "location", source = "location")
+    @Mapping(target = "dateOfBirth", expression = "java(java.time.LocalDate.now().minusYears(request.getAge() != null ? request.getAge() : 0))")
     @Mapping(target = "preferredCategories", source = "preferredCategories")
     @Mapping(target = "preferredBrands", source = "preferredBrands")
     @Mapping(target = "recentlyViewedProducts", source = "recentlyViewedProducts")
     @Mapping(target = "recentlyPurchasedProducts", source = "recentlyPurchasedProducts")
-    @Mapping(target = "wishListProducts", source = "wishListProducts")
+    @Mapping(target = "wishListItems", source = "wishListItems")
     @Mapping(target = "lastLoginDate", expression = "java(java.time.LocalDateTime.now())")
     RecommendationCustomer requestToCustomer(ProductRecommendationRequest request);
     
@@ -76,8 +76,8 @@ public interface ProductMapper {
      * @return The product recommendation response DTO
      */
     @Mapping(target = "customerId", source = "customer.id")
-    @Mapping(target = "customerName", source = "customer.name")
-    @Mapping(target = "currentProductId", source = "currentProduct.id")
+    @Mapping(target = "customerName", expression = "java(customer.getFullName())")
+    @Mapping(target = "currentProductId", expression = "java(currentProduct != null ? String.valueOf(currentProduct.getId()) : null)")
     @Mapping(target = "currentProductName", source = "currentProduct.name")
     @Mapping(target = "recommendationType", source = "recommendationType")
     @Mapping(target = "recommendations", source = "recommendedProducts")
@@ -101,16 +101,16 @@ public interface ProductMapper {
      * @return The updated recommendation customer entity
      */
     @Mapping(target = "id", source = "customerId")
-    @Mapping(target = "name", expression = "java(request.getFirstName() + \" \" + request.getLastName())")
-    @Mapping(target = "age", source = "age")
+    @Mapping(target = "firstName", source = "firstName")
+    @Mapping(target = "lastName", source = "lastName")
     @Mapping(target = "gender", source = "gender")
     @Mapping(target = "email", source = "email")
-    @Mapping(target = "location", source = "location")
+    @Mapping(target = "dateOfBirth", expression = "java(java.time.LocalDate.now().minusYears(request.getAge() != null ? request.getAge() : 0))")
     @Mapping(target = "preferredCategories", source = "preferredCategories")
     @Mapping(target = "preferredBrands", source = "preferredBrands")
     @Mapping(target = "recentlyViewedProducts", source = "recentlyViewedProducts")
     @Mapping(target = "recentlyPurchasedProducts", source = "recentlyPurchasedProducts")
-    @Mapping(target = "wishListProducts", source = "wishListProducts")
+    @Mapping(target = "wishListItems", source = "wishListItems")
     @Mapping(target = "lastLoginDate", expression = "java(java.time.LocalDateTime.now())")
     RecommendationCustomer updateCustomer(ProductRecommendationRequest request, @MappingTarget RecommendationCustomer customer);
     
