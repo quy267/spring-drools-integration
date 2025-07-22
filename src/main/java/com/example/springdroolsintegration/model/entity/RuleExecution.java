@@ -23,7 +23,8 @@ import java.util.Date;
 @Entity
 @Table(name = "rule_executions", indexes = {
     @Index(name = "idx_rule_name", columnList = "ruleName"),
-    @Index(name = "idx_execution_time", columnList = "executionTime")
+    @Index(name = "idx_execution_time_ms", columnList = "executionTimeMs"),
+    @Index(name = "idx_execution_date", columnList = "executionDate")
 })
 @Data
 @NoArgsConstructor

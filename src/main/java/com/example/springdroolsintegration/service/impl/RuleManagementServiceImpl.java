@@ -23,6 +23,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.annotation.PostConstruct;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -60,10 +62,10 @@ public class RuleManagementServiceImpl implements RuleManagementService {
     private final FileValidator fileValidator;
     private final SecureFileStorage secureFileStorage;
     
-    @Value("${app.rules.upload.dir:${java.io.tmpdir}/rules/uploads}")
+    @Value("${app.rules.upload.dir:/tmp/rules/uploads}")
     private String uploadDir;
     
-    @Value("${app.rules.backup.dir:${java.io.tmpdir}/rules/backups}")
+    @Value("${app.rules.backup.dir:/tmp/rules/backups}")
     private String backupDir;
     
     @Value("${app.rules.version.enabled:true}")
@@ -97,11 +99,20 @@ public class RuleManagementServiceImpl implements RuleManagementService {
         this.fileValidator = fileValidator;
         this.secureFileStorage = secureFileStorage;
         
+        logger.info("RuleManagementService initialized");
+    }
+    
+    /**
+     * Initialize directories after all properties have been injected.
+     * This method is called after Spring has injected all @Value properties.
+     */
+    @PostConstruct
+    private void initializeDirectories() {
         // Create upload and backup directories if they don't exist
         createDirectoryIfNotExists(uploadDir);
         createDirectoryIfNotExists(backupDir);
         
-        logger.info("RuleManagementService initialized with upload dir: {}, backup dir: {}", uploadDir, backupDir);
+        logger.info("RuleManagementService directories initialized with upload dir: {}, backup dir: {}", uploadDir, backupDir);
     }
     
     @Override
@@ -797,6 +808,11 @@ public class RuleManagementServiceImpl implements RuleManagementService {
      * @param directory The directory to create
      */
     private void createDirectoryIfNotExists(String directory) {
+        if (directory == null || directory.trim().isEmpty()) {
+            logger.warn("Directory path is null or empty, skipping creation");
+            return;
+        }
+        
         Path path = Paths.get(directory);
         if (!Files.exists(path)) {
             try {
@@ -836,7 +852,4 @@ public class RuleManagementServiceImpl implements RuleManagementService {
      *
      * @return A list of supported file extensions
      */
-    private List<String> getSupportedExtensions() {
-        return List.of(".drl", ".xls", ".xlsx");
-    }
 }

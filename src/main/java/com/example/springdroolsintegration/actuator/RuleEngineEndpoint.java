@@ -20,7 +20,7 @@ import java.util.Map;
  * This endpoint exposes detailed information about the rule engine.
  */
 @Component
-@Endpoint(id = "rules")
+@Endpoint(id = "rule-engine")
 public class RuleEngineEndpoint {
 
     private static final Logger logger = LoggerFactory.getLogger(RuleEngineEndpoint.class);

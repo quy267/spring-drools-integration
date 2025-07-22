@@ -21,7 +21,7 @@ import java.util.Map;
  * This endpoint exposes rule metrics and allows for operations like refreshing rules.
  */
 @Component
-@Endpoint(id = "rules")
+@Endpoint(id = "rule-metrics")
 public class RuleMetricsEndpoint {
 
     private static final Logger logger = LoggerFactory.getLogger(RuleMetricsEndpoint.class);
@@ -50,44 +50,21 @@ public class RuleMetricsEndpoint {
      * @return A map of overall rule metrics
      */
     @ReadOperation
-    public Map<String, Object> metrics() {
+    public Map<String, Object> getMetrics() {
         LoggingUtils.logInfo(logger, "Actuator endpoint: Getting overall rule metrics");
         return ruleMetricsService.getOverallMetrics();
     }
     
     /**
-     * Gets metrics for a specific rule.
+     * Gets metrics for a specific rule by name.
      *
      * @param ruleName The name of the rule
      * @return A map of rule metrics
      */
     @ReadOperation
-    public Map<String, Object> ruleMetrics(@Selector String ruleName) {
+    public Map<String, Object> getMetricsByRule(@Selector String ruleName) {
         LoggingUtils.logInfo(logger, "Actuator endpoint: Getting metrics for rule: {}", ruleName);
         return ruleMetricsService.getRuleMetrics(ruleName);
-    }
-    
-    /**
-     * Gets metrics for a specific rule package.
-     *
-     * @param packageName The name of the rule package
-     * @return A map of package metrics
-     */
-    @ReadOperation
-    public Map<String, Object> packageMetrics(@Selector String packageName) {
-        LoggingUtils.logInfo(logger, "Actuator endpoint: Getting metrics for package: {}", packageName);
-        return ruleMetricsService.getPackageMetrics(packageName);
-    }
-    
-    /**
-     * Gets the current status of the rule engine.
-     *
-     * @return A map containing rule engine status information
-     */
-    @ReadOperation
-    public Map<String, Object> status() {
-        LoggingUtils.logInfo(logger, "Actuator endpoint: Getting rule status");
-        return ruleManagementService.getRuleStatus();
     }
     
     /**
