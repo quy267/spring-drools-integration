@@ -1,0 +1,68 @@
+groups:
+  - name: drools-alerts
+    rules:
+      # Alert when rule execution time is too high
+      - alert: DroolsRuleExecutionTimeHigh
+        expr: avg(drools_rule_execution_time_seconds_max) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Drools rule execution time is high"
+          description: "Average rule execution time is above 500ms for 5 minutes"
+          dashboard_url: "http://grafana:3000/d/drools/drools-dashboard"
+
+      # Alert when rule error rate is too high
+      - alert: DroolsRuleErrorRateHigh
+        expr: sum(rate(drools_rule_errors_total[5m])) / sum(rate(drools_rule_execution_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Drools rule error rate is high"
+          description: "Rule error rate is above 5% for 5 minutes"
+          dashboard_url: "http://grafana:3000/d/drools/drools-dashboard"
+
+      # Alert when rule hit rate is too low
+      - alert: DroolsRuleHitRateLow
+        expr: sum(rate(drools_rule_hits_total[5m])) / sum(rate(drools_rule_execution_total[5m])) < 0.1
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Drools rule hit rate is low"
+          description: "Rule hit rate is below 10% for 10 minutes"
+          dashboard_url: "http://grafana:3000/d/drools/drools-dashboard"
+
+      # Alert when rule engine is down
+      - alert: DroolsRuleEngineDown
+        expr: up{job="spring-drools-integration"} == 0 or health_status{name="drools"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Drools rule engine is down"
+          description: "Drools rule engine has been down for more than 1 minute"
+          dashboard_url: "http://grafana:3000/d/drools/drools-dashboard"
+
+      # Alert when decision table validation fails
+      - alert: DroolsDecisionTableValidationFailed
+        expr: health_status{name="decisionTable"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Drools decision table validation failed"
+          description: "Decision table validation has been failing for more than 1 minute"
+          dashboard_url: "http://grafana:3000/d/drools/drools-dashboard"
+
+      # Alert when JVM memory usage is high
+      - alert: JvmMemoryUsageHigh
+        expr: sum(jvm_memory_used_bytes) / sum(jvm_memory_max_bytes) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "JVM memory usage is high"
+          description: "JVM memory usage is above 80% for 5 minutes"
+          dashboard_url: "http://grafana:3000/d/drools/drools-dashboard"
