@@ -1,5 +1,6 @@
 package com.example.springdroolsintegration.service.impl;
 
+import com.example.springdroolsintegration.config.CacheConfig;
 import com.example.springdroolsintegration.exception.RuleExecutionException;
 import com.example.springdroolsintegration.mapper.ProductMapper;
 import com.example.springdroolsintegration.model.dto.ProductRecommendationResponse;
@@ -12,6 +13,7 @@ import com.example.springdroolsintegration.service.RuleExecutionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -64,6 +66,9 @@ public class ProductRecommendationServiceImpl implements ProductRecommendationSe
     }
     
     @Override
+    @Cacheable(value = CacheConfig.PRODUCT_RECOMMENDATION_CACHE, 
+               key = "#request.customerId + '-' + #request.currentProductId + '-' + #request.maxRecommendations",
+               unless = "#result == null")
     public ProductRecommendationResponse getRecommendations(ProductRecommendationRequest request) {
         if (request == null) {
             throw new RuleExecutionException("Cannot get recommendations for null request");
@@ -171,6 +176,9 @@ public class ProductRecommendationServiceImpl implements ProductRecommendationSe
     }
     
     @Override
+    @Cacheable(value = CacheConfig.PRODUCT_RECOMMENDATION_CACHE, 
+               key = "'product-based-' + #productId + '-' + #maxRecommendations",
+               unless = "#result == null")
     public ProductRecommendationResponse getProductBasedRecommendations(String productId, int maxRecommendations) {
         if (productId == null || productId.isEmpty()) {
             throw new RuleExecutionException("Cannot get recommendations for null or empty product ID");

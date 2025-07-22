@@ -2,6 +2,7 @@ package com.example.springdroolsintegration.service.impl;
 
 import com.example.springdroolsintegration.config.DroolsProperties;
 import com.example.springdroolsintegration.exception.RuleExecutionException;
+import com.example.springdroolsintegration.service.KieSessionPoolService;
 import com.example.springdroolsintegration.service.RuleExecutionService;
 
 import org.kie.api.KieBase;
@@ -26,6 +27,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Implementation of the RuleExecutionService interface.
  * This service handles the execution of Drools rules and manages rule sessions.
+ * Uses KieSessionPoolService for efficient session pooling and reuse.
  */
 @Service
 public class RuleExecutionServiceImpl implements RuleExecutionService {
@@ -35,6 +37,7 @@ public class RuleExecutionServiceImpl implements RuleExecutionService {
     private final KieBase kieBase;
     private final DroolsProperties droolsProperties;
     private final ExecutorService executorService;
+    private final KieSessionPoolService sessionPoolService;
     
     // Statistics tracking
     private final ConcurrentHashMap<String, AtomicLong> ruleExecutionCounts = new ConcurrentHashMap<>();
@@ -51,10 +54,12 @@ public class RuleExecutionServiceImpl implements RuleExecutionService {
      *
      * @param kieBase The KieBase for creating rule sessions
      * @param droolsProperties Configuration properties for Drools
+     * @param sessionPoolService The service for managing KieSession pooling
      */
-    public RuleExecutionServiceImpl(KieBase kieBase, DroolsProperties droolsProperties) {
+    public RuleExecutionServiceImpl(KieBase kieBase, DroolsProperties droolsProperties, KieSessionPoolService sessionPoolService) {
         this.kieBase = kieBase;
         this.droolsProperties = droolsProperties;
+        this.sessionPoolService = sessionPoolService;
         this.executorService = Executors.newFixedThreadPool(droolsProperties.getMaxExecutionThreads());
         
         logger.info("RuleExecutionService initialized with max threads: {}", droolsProperties.getMaxExecutionThreads());
@@ -171,8 +176,8 @@ public class RuleExecutionServiceImpl implements RuleExecutionService {
     
     @Override
     public KieSession createSession(String sessionName) {
-        logger.debug("Creating KieSession with name: {}", sessionName);
-        KieSession kieSession = kieBase.newKieSession();
+        logger.debug("Borrowing KieSession from pool with name: {}", sessionName);
+        KieSession kieSession = sessionPoolService.borrowSession(sessionName);
         sessionsCreated.incrementAndGet();
         return kieSession;
     }
@@ -181,11 +186,11 @@ public class RuleExecutionServiceImpl implements RuleExecutionService {
     public void disposeSession(KieSession session) {
         if (session != null) {
             try {
-                session.dispose();
+                logger.debug("Returning KieSession to pool");
+                sessionPoolService.returnSession(session);
                 sessionsDisposed.incrementAndGet();
-                logger.debug("KieSession disposed");
             } catch (Exception e) {
-                logger.warn("Error disposing KieSession", e);
+                logger.warn("Error returning KieSession to pool", e);
             }
         }
     }
@@ -199,6 +204,14 @@ public class RuleExecutionServiceImpl implements RuleExecutionService {
         statistics.put("totalAsyncExecutions", totalAsyncExecutions.get());
         statistics.put("sessionsCreated", sessionsCreated.get());
         statistics.put("sessionsDisposed", sessionsDisposed.get());
+        
+        // Add session pool statistics
+        Map<String, Object> poolStatistics = new HashMap<>();
+        poolStatistics.put("poolSize", sessionPoolService.getPoolSize());
+        poolStatistics.put("totalSessionsCreated", sessionPoolService.getTotalSessionsCreated());
+        poolStatistics.put("totalSessionsBorrowed", sessionPoolService.getTotalSessionsBorrowed());
+        poolStatistics.put("totalSessionsReturned", sessionPoolService.getTotalSessionsReturned());
+        statistics.put("sessionPool", poolStatistics);
         
         Map<String, Long> executionCounts = new HashMap<>();
         for (Map.Entry<String, AtomicLong> entry : ruleExecutionCounts.entrySet()) {

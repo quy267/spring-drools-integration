@@ -1,5 +1,6 @@
 package com.example.springdroolsintegration.service.impl;
 
+import com.example.springdroolsintegration.config.CacheConfig;
 import com.example.springdroolsintegration.exception.RuleExecutionException;
 import com.example.springdroolsintegration.mapper.CustomerMapper;
 import com.example.springdroolsintegration.model.dto.CustomerDiscountResponse;
@@ -12,6 +13,7 @@ import com.example.springdroolsintegration.service.RuleExecutionService;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -56,6 +58,8 @@ public class CustomerDiscountServiceImpl implements CustomerDiscountService {
     }
     
     @Override
+    @Cacheable(value = CacheConfig.CUSTOMER_DISCOUNT_CACHE, key = "#request.customerId + '-' + #request.orderAmount", 
+               unless = "#result == null")
     public CustomerDiscountResponse calculateDiscount(CustomerDiscountRequest request) {
         if (request == null) {
             throw new RuleExecutionException("Cannot calculate discount for null request");

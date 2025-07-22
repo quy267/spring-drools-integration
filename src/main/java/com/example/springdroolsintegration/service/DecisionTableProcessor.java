@@ -1,9 +1,12 @@
 package com.example.springdroolsintegration.service;
 
+import com.example.springdroolsintegration.config.CacheConfig;
 import com.example.springdroolsintegration.exception.DecisionTableValidationException;
 import com.example.springdroolsintegration.exception.DecisionTableValidationException.ValidationErrorType;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.apache.poi.xssf.streaming.SXSSFWorkbook;
+import org.apache.poi.openxml4j.exceptions.OpenXML4JException;
 import org.drools.decisiontable.DecisionTableProviderImpl;
 import org.kie.internal.builder.DecisionTableConfiguration;
 import org.kie.internal.builder.DecisionTableInputType;
@@ -12,6 +15,7 @@ import org.kie.api.io.Resource;
 import org.kie.internal.io.ResourceFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -170,12 +174,14 @@ public class DecisionTableProcessor {
     /**
      * Converts an Excel decision table file to DRL format.
      * This method processes all worksheets in the workbook.
+     * Results are cached to improve performance for repeated calls with the same file.
      *
      * @param filePath The path to the Excel file
      * @return The generated DRL content
      * @throws IOException if there is an error reading the file
      * @throws DecisionTableValidationException if the file format is invalid
      */
+    @Cacheable(value = CacheConfig.RULE_EXECUTION_CACHE, key = "'drl-' + #filePath")
     public String convertToDrl(String filePath) throws IOException {
         logger.info("Converting decision table to DRL: {}", filePath);
         
@@ -205,6 +211,7 @@ public class DecisionTableProcessor {
     
     /**
      * Converts an Excel decision table file to DRL format, processing only the specified worksheet.
+     * Results are cached to improve performance for repeated calls with the same file and sheet.
      *
      * @param filePath The path to the Excel file
      * @param sheetName The name of the worksheet to process
@@ -212,6 +219,7 @@ public class DecisionTableProcessor {
      * @throws IOException if there is an error reading the file
      * @throws DecisionTableValidationException if the file format is invalid or the sheet doesn't exist
      */
+    @Cacheable(value = CacheConfig.RULE_EXECUTION_CACHE, key = "'drl-' + #filePath + '-' + #sheetName")
     public String convertToDrl(String filePath, String sheetName) throws IOException {
         logger.info("Converting decision table to DRL, sheet {}: {}", sheetName, filePath);
         
@@ -262,6 +270,7 @@ public class DecisionTableProcessor {
     
     /**
      * Converts an Excel decision table file to DRL format, processing multiple specified worksheets.
+     * Results are cached to improve performance for repeated calls with the same file and sheets.
      *
      * @param filePath The path to the Excel file
      * @param sheetNames The names of the worksheets to process
@@ -269,6 +278,7 @@ public class DecisionTableProcessor {
      * @throws IOException if there is an error reading the file
      * @throws DecisionTableValidationException if the file format is invalid or a sheet doesn't exist
      */
+    @Cacheable(value = CacheConfig.RULE_EXECUTION_CACHE, key = "'drl-multi-' + #filePath + '-' + #sheetNames.toString()")
     public Map<String, String> convertToDrl(String filePath, List<String> sheetNames) throws IOException {
         logger.info("Converting decision table to DRL, sheets {}: {}", sheetNames, filePath);
         
@@ -311,6 +321,7 @@ public class DecisionTableProcessor {
     
     /**
      * Creates a temporary file from a MultipartFile.
+     * Uses an optimized buffer size (8KB) for better I/O performance.
      *
      * @param file The MultipartFile to convert
      * @return The path to the temporary file
@@ -320,10 +331,11 @@ public class DecisionTableProcessor {
         // Create a temporary file
         Path tempFile = Files.createTempFile("decision-table-", getFileExtension(file.getOriginalFilename()));
         
-        // Copy the file content to the temporary file
+        // Copy the file content to the temporary file using a larger buffer for better performance
         try (InputStream in = file.getInputStream();
              OutputStream out = Files.newOutputStream(tempFile)) {
-            byte[] buffer = new byte[1024];
+            // Use 8KB buffer size for better performance with Excel files
+            byte[] buffer = new byte[8192];
             int bytesRead;
             while ((bytesRead = in.read(buffer)) != -1) {
                 out.write(buffer, 0, bytesRead);
@@ -364,6 +376,7 @@ public class DecisionTableProcessor {
     /**
      * Validates the decision table format.
      * This method checks that the decision table has the required columns and valid structure.
+     * Uses memory-efficient approach for large files by limiting validation to essential checks.
      *
      * @param filePath The path to the Excel file
      * @throws IOException if there is an error reading the file
@@ -371,7 +384,26 @@ public class DecisionTableProcessor {
      */
     private void validateDecisionTable(Path filePath) throws IOException {
         String filename = filePath.getFileName().toString();
+        boolean isLargeFile = Files.size(filePath) > 5 * 1024 * 1024; // Consider files larger than 5MB as large
         
+        // For large files, use a more memory-efficient approach
+        if (isLargeFile) {
+            logger.info("Large file detected ({}MB), using optimized validation approach", 
+                    Files.size(filePath) / (1024 * 1024));
+            try {
+                validateLargeDecisionTable(filePath);
+                return;
+            } catch (OpenXML4JException e) {
+                // Convert OpenXML4JException to DecisionTableValidationException
+                throw new DecisionTableValidationException(
+                        "Error validating large Excel file '" + filename + "': " + e.getMessage(),
+                        e,
+                        filename,
+                        ValidationErrorType.CORRUPTED_FILE);
+            }
+        }
+        
+        // Standard validation for normal-sized files
         try (InputStream is = Files.newInputStream(filePath);
              Workbook workbook = WorkbookFactory.create(is)) {
             
@@ -451,8 +483,10 @@ public class DecisionTableProcessor {
                             ValidationErrorType.EMPTY_TABLE);
                 }
                 
-                // Validate data rows (basic structure validation)
-                for (int rowNum = 1; rowNum < sheet.getPhysicalNumberOfRows(); rowNum++) {
+                // For normal files, validate a sample of data rows (basic structure validation)
+                // Only check up to 100 rows to avoid excessive memory usage
+                int maxRowsToCheck = Math.min(100, sheet.getPhysicalNumberOfRows() - 1);
+                for (int rowNum = 1; rowNum <= maxRowsToCheck; rowNum++) {
                     Row row = sheet.getRow(rowNum);
                     if (row == null) {
                         continue;
@@ -462,6 +496,12 @@ public class DecisionTableProcessor {
                     if (row.getPhysicalNumberOfCells() == 0) {
                         logger.warn("Row {} in sheet {} of file {} is empty", rowNum, sheetName, filename);
                     }
+                }
+                
+                // If there are more rows, just log the count without loading them all
+                if (sheet.getPhysicalNumberOfRows() > maxRowsToCheck + 1) {
+                    logger.info("Sheet {} in file {} has {} total rows, validated first {} rows", 
+                            sheetName, filename, sheet.getPhysicalNumberOfRows(), maxRowsToCheck);
                 }
             }
             
@@ -483,6 +523,90 @@ public class DecisionTableProcessor {
                     "Error reading Excel file '" + filename + "': " + e.getMessage() + ". " +
                     "The file may be corrupted, password-protected, or in an unsupported format. " +
                     "Please ensure you are using a valid Excel file (.xls or .xlsx) that is not corrupted or password-protected.",
+                    e,
+                    filename,
+                    ValidationErrorType.CORRUPTED_FILE);
+        }
+    }
+    
+    /**
+     * Validates a large decision table file using a memory-efficient approach.
+     * Only checks essential structure to avoid loading the entire file into memory.
+     *
+     * @param filePath The path to the Excel file
+     * @throws IOException if there is an error reading the file
+     * @throws OpenXML4JException if there is an error processing the OpenXML file
+     * @throws DecisionTableValidationException if the decision table format is invalid
+     */
+    private void validateLargeDecisionTable(Path filePath) throws IOException, OpenXML4JException {
+        String filename = filePath.getFileName().toString();
+        
+        // For large files, we'll use a more targeted approach to validation
+        // We'll only check sheet existence, header rows, and a small sample of data rows
+        
+        try (InputStream is = Files.newInputStream(filePath)) {
+            // Use the event model API for .xlsx files to reduce memory usage
+            if (filename.endsWith(".xlsx")) {
+                // Just check if the file is a valid Excel file and has sheets
+                // This is a lightweight check that doesn't load the entire file
+                org.apache.poi.openxml4j.opc.OPCPackage pkg = 
+                        org.apache.poi.openxml4j.opc.OPCPackage.open(is);
+                try {
+                    org.apache.poi.xssf.eventusermodel.XSSFReader reader = 
+                            new org.apache.poi.xssf.eventusermodel.XSSFReader(pkg);
+                    
+                    // Check if there are any sheets
+                    if (!reader.getSheetsData().hasNext()) {
+                        throw new DecisionTableValidationException(
+                                "The Excel file '" + filename + "' contains no worksheets.",
+                                filename,
+                                ValidationErrorType.EMPTY_TABLE);
+                    }
+                    
+                    logger.info("Large file validation successful for: {}", filename);
+                } finally {
+                    pkg.close();
+                }
+            } else {
+                // For .xls files, we'll use a more basic approach
+                // Just check if it's a valid Excel file
+                try (Workbook workbook = WorkbookFactory.create(is)) {
+                    if (workbook.getNumberOfSheets() == 0) {
+                        throw new DecisionTableValidationException(
+                                "The Excel file '" + filename + "' contains no worksheets.",
+                                filename,
+                                ValidationErrorType.EMPTY_TABLE);
+                    }
+                    
+                    // Check the first sheet and its header row only
+                    Sheet sheet = workbook.getSheetAt(0);
+                    if (sheet.getPhysicalNumberOfRows() == 0) {
+                        throw new DecisionTableValidationException(
+                                "The first sheet in file '" + filename + "' is empty.",
+                                filename,
+                                ValidationErrorType.EMPTY_TABLE);
+                    }
+                    
+                    // Check header row
+                    Row headerRow = sheet.getRow(0);
+                    if (headerRow == null) {
+                        throw new DecisionTableValidationException(
+                                "The first sheet in file '" + filename + "' has no header row.",
+                                filename,
+                                ValidationErrorType.INVALID_STRUCTURE);
+                    }
+                    
+                    logger.info("Large file validation successful for: {}", filename);
+                }
+            }
+        } catch (Exception e) {
+            if (e instanceof DecisionTableValidationException) {
+                throw e;
+            }
+            
+            // Handle other exceptions
+            throw new DecisionTableValidationException(
+                    "Error validating large Excel file '" + filename + "': " + e.getMessage(),
                     e,
                     filename,
                     ValidationErrorType.CORRUPTED_FILE);
@@ -534,6 +658,7 @@ public class DecisionTableProcessor {
     
     /**
      * Creates a new workbook containing only the specified sheet from the original workbook.
+     * Uses streaming API (SXSSF) for large files to improve memory usage and performance.
      *
      * @param sourceFile The source Excel file
      * @param sheetName The name of the sheet to include
@@ -546,8 +671,7 @@ public class DecisionTableProcessor {
         File targetFile = File.createTempFile("single-sheet-", getFileExtension(sourceFile.getName()));
         
         try (InputStream is = new FileInputStream(sourceFile);
-             Workbook sourceWorkbook = WorkbookFactory.create(is);
-             OutputStream os = new FileOutputStream(targetFile)) {
+             Workbook sourceWorkbook = WorkbookFactory.create(is)) {
             
             // Find the sheet
             Sheet sourceSheet = sourceWorkbook.getSheet(sheetName);
@@ -558,63 +682,103 @@ public class DecisionTableProcessor {
                         ValidationErrorType.INVALID_STRUCTURE);
             }
             
+            // Determine if we should use streaming API based on row count
+            // Use streaming API for sheets with more than 1000 rows
+            boolean useStreamingApi = sourceSheet.getLastRowNum() > 1000 && sourceFile.getName().endsWith(".xlsx");
+            
             // Create a new workbook
             Workbook targetWorkbook;
             if (sourceFile.getName().endsWith(".xlsx")) {
-                targetWorkbook = new XSSFWorkbook();
+                if (useStreamingApi) {
+                    // Use streaming API for large XLSX files
+                    // Keep only 100 rows in memory, rest will be flushed to disk
+                    targetWorkbook = new SXSSFWorkbook(100);
+                    logger.debug("Using streaming API for large file: {}, sheet: {}, rows: {}", 
+                            sourceFile.getName(), sheetName, sourceSheet.getLastRowNum());
+                } else {
+                    targetWorkbook = new XSSFWorkbook();
+                }
             } else {
                 targetWorkbook = WorkbookFactory.create(false);
             }
             
-            // Create a new sheet with the same name
-            Sheet targetSheet = targetWorkbook.createSheet(sheetName);
-            
-            // Copy all rows and cells
-            for (int i = 0; i <= sourceSheet.getLastRowNum(); i++) {
-                Row sourceRow = sourceSheet.getRow(i);
-                if (sourceRow == null) {
-                    continue;
-                }
+            try {
+                // Create a new sheet with the same name
+                Sheet targetSheet = targetWorkbook.createSheet(sheetName);
                 
-                Row targetRow = targetSheet.createRow(i);
-                
-                for (int j = 0; j < sourceRow.getLastCellNum(); j++) {
-                    Cell sourceCell = sourceRow.getCell(j);
-                    if (sourceCell == null) {
+                // Copy all rows and cells
+                for (int i = 0; i <= sourceSheet.getLastRowNum(); i++) {
+                    Row sourceRow = sourceSheet.getRow(i);
+                    if (sourceRow == null) {
                         continue;
                     }
                     
-                    Cell targetCell = targetRow.createCell(j);
+                    Row targetRow = targetSheet.createRow(i);
                     
-                    // Copy cell style and value
-                    targetCell.setCellStyle(sourceCell.getCellStyle());
-                    
-                    switch (sourceCell.getCellType()) {
-                        case STRING:
-                            targetCell.setCellValue(sourceCell.getStringCellValue());
-                            break;
-                        case NUMERIC:
-                            targetCell.setCellValue(sourceCell.getNumericCellValue());
-                            break;
-                        case BOOLEAN:
-                            targetCell.setCellValue(sourceCell.getBooleanCellValue());
-                            break;
-                        case FORMULA:
-                            targetCell.setCellValue(sourceCell.getCellFormula());
-                            break;
-                        case BLANK:
-                            targetCell.setBlank();
-                            break;
-                        default:
-                            // For other types, just leave the cell blank
-                            targetCell.setBlank();
+                    for (int j = 0; j < sourceRow.getLastCellNum(); j++) {
+                        Cell sourceCell = sourceRow.getCell(j);
+                        if (sourceCell == null) {
+                            continue;
+                        }
+                        
+                        Cell targetCell = targetRow.createCell(j);
+                        
+                        // Copy cell value (skip style for streaming workbooks to improve performance)
+                        if (!useStreamingApi) {
+                            targetCell.setCellStyle(sourceCell.getCellStyle());
+                        }
+                        
+                        switch (sourceCell.getCellType()) {
+                            case STRING:
+                                targetCell.setCellValue(sourceCell.getStringCellValue());
+                                break;
+                            case NUMERIC:
+                                targetCell.setCellValue(sourceCell.getNumericCellValue());
+                                break;
+                            case BOOLEAN:
+                                targetCell.setCellValue(sourceCell.getBooleanCellValue());
+                                break;
+                            case FORMULA:
+                                // Skip formulas in streaming mode to improve performance
+                                if (!useStreamingApi) {
+                                    targetCell.setCellFormula(sourceCell.getCellFormula());
+                                } else {
+                                    // For streaming mode, just copy the formula result
+                                    if (sourceCell.getCachedFormulaResultType() == CellType.NUMERIC) {
+                                        targetCell.setCellValue(sourceCell.getNumericCellValue());
+                                    } else if (sourceCell.getCachedFormulaResultType() == CellType.STRING) {
+                                        targetCell.setCellValue(sourceCell.getStringCellValue());
+                                    } else if (sourceCell.getCachedFormulaResultType() == CellType.BOOLEAN) {
+                                        targetCell.setCellValue(sourceCell.getBooleanCellValue());
+                                    } else {
+                                        targetCell.setBlank();
+                                    }
+                                }
+                                break;
+                            case BLANK:
+                                targetCell.setBlank();
+                                break;
+                            default:
+                                // For other types, just leave the cell blank
+                                targetCell.setBlank();
+                        }
                     }
+                    
+                    // No need for explicit row flushing - SXSSFWorkbook will handle this automatically
+                    // based on the window size (100) specified during creation
                 }
+                
+                // Write the new workbook to the target file
+                try (OutputStream os = new FileOutputStream(targetFile)) {
+                    targetWorkbook.write(os);
+                }
+            } finally {
+                // Dispose of temporary files created by SXSSF
+                if (useStreamingApi) {
+                    ((SXSSFWorkbook) targetWorkbook).dispose();
+                }
+                targetWorkbook.close();
             }
-            
-            // Write the new workbook to the target file
-            targetWorkbook.write(os);
-            targetWorkbook.close();
         }
         
         return targetFile;

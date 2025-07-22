@@ -1,5 +1,6 @@
 package com.example.springdroolsintegration.service.impl;
 
+import com.example.springdroolsintegration.config.CacheConfig;
 import com.example.springdroolsintegration.exception.RuleExecutionException;
 import com.example.springdroolsintegration.mapper.LoanMapper;
 import com.example.springdroolsintegration.model.dto.LoanApprovalResponse;
@@ -13,6 +14,7 @@ import com.example.springdroolsintegration.service.RuleExecutionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -61,6 +63,9 @@ public class LoanApprovalServiceImpl implements LoanApprovalService {
     }
     
     @Override
+    @Cacheable(value = CacheConfig.LOAN_APPROVAL_CACHE, 
+               key = "#request.fullName + '-' + #request.loanAmount + '-' + #request.creditScore + '-' + #request.employmentStatus",
+               unless = "#result == null")
     public LoanApprovalResponse evaluateLoanApplication(LoanApprovalRequest request) {
         if (request == null) {
             throw new RuleExecutionException("Cannot evaluate null loan application request");

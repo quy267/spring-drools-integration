@@ -15,6 +15,33 @@ public class RuleExecutionException extends RuntimeException {
      * Constructs a new RuleExecutionException with the specified detail message.
      *
      * @param message the detail message
+     */
+    public RuleExecutionException(String message) {
+        super(message);
+        this.ruleName = null;
+        this.rulePackage = null;
+        this.errorType = ErrorType.OTHER;
+        this.correlationId = null;
+    }
+    
+    /**
+     * Constructs a new RuleExecutionException with the specified detail message and cause.
+     *
+     * @param message the detail message
+     * @param cause the cause of the exception
+     */
+    public RuleExecutionException(String message, Throwable cause) {
+        super(message, cause);
+        this.ruleName = null;
+        this.rulePackage = null;
+        this.errorType = ErrorType.OTHER;
+        this.correlationId = null;
+    }
+    
+    /**
+     * Constructs a new RuleExecutionException with the specified detail message.
+     *
+     * @param message the detail message
      * @param ruleName the name of the rule that failed execution
      * @param errorType the type of execution error
      */
