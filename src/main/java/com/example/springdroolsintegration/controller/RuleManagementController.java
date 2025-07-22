@@ -1,6 +1,7 @@
 package com.example.springdroolsintegration.controller;
 
 import com.example.springdroolsintegration.service.RuleManagementService;
+import com.example.springdroolsintegration.util.FileValidator;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -10,8 +11,10 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -21,6 +24,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -30,20 +35,24 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/v1/rules")
 @Tag(name = "Rule Management", description = "API for managing Drools rules")
+@Validated
 public class RuleManagementController {
     
     private static final Logger logger = LoggerFactory.getLogger(RuleManagementController.class);
     
     private final RuleManagementService ruleManagementService;
+    private final FileValidator fileValidator;
     
     /**
      * Constructor for RuleManagementController.
      * Uses constructor injection for dependencies as per Spring Boot best practices.
      *
      * @param ruleManagementService The rule management service
+     * @param fileValidator The file validator
      */
-    public RuleManagementController(RuleManagementService ruleManagementService) {
+    public RuleManagementController(RuleManagementService ruleManagementService, FileValidator fileValidator) {
         this.ruleManagementService = ruleManagementService;
+        this.fileValidator = fileValidator;
     }
     
     /**
@@ -67,7 +76,19 @@ public class RuleManagementController {
             @Parameter(description = "Optional version identifier for the rule")
             @RequestParam(value = "version", required = false) String version) {
         
-        logger.info("Received request to upload rule file: {}, version: {}", file.getOriginalFilename(), version);
+        logger.info("Received request to upload rule file: {}, version: {}", 
+                file != null ? file.getOriginalFilename() : "null", version);
+        
+        // Validate the file
+        String validationError = fileValidator.getRuleFileValidationError(file);
+        if (validationError != null) {
+            logger.warn("File validation failed: {}", validationError);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", validationError);
+            errorResponse.put("timestamp", Instant.now().toString());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+        }
         
         try {
             Map<String, Object> result = ruleManagementService.uploadRuleFile(file, version);
@@ -79,10 +100,11 @@ public class RuleManagementController {
             return ResponseEntity.ok(result);
         } catch (IOException e) {
             logger.error("Error uploading rule file", e);
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "message", "Error uploading rule file: " + e.getMessage()
-            ));
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", "Error uploading rule file: " + e.getMessage());
+            errorResponse.put("timestamp", Instant.now().toString());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
     
@@ -97,23 +119,37 @@ public class RuleManagementController {
                description = "Validates a rule file without adding it to the rule engine")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Validation result"),
+            @ApiResponse(responseCode = "400", description = "Invalid file"),
             @ApiResponse(responseCode = "500", description = "Server error during validation")
     })
     public ResponseEntity<Map<String, Object>> validateRuleFile(
             @Parameter(description = "Rule file to validate", required = true)
             @RequestParam("file") MultipartFile file) {
         
-        logger.info("Received request to validate rule file: {}", file.getOriginalFilename());
+        logger.info("Received request to validate rule file: {}", 
+                file != null ? file.getOriginalFilename() : "null");
+        
+        // Validate the file
+        String validationError = fileValidator.getRuleFileValidationError(file);
+        if (validationError != null) {
+            logger.warn("File validation failed: {}", validationError);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("valid", false);
+            errorResponse.put("message", validationError);
+            errorResponse.put("timestamp", Instant.now().toString());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse);
+        }
         
         try {
             Map<String, Object> result = ruleManagementService.validateRuleFile(file);
             return ResponseEntity.ok(result);
         } catch (IOException e) {
             logger.error("Error validating rule file", e);
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "valid", false,
-                    "message", "Error validating rule file: " + e.getMessage()
-            ));
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("valid", false);
+            errorResponse.put("message", "Error validating rule file: " + e.getMessage());
+            errorResponse.put("timestamp", Instant.now().toString());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
     }
     

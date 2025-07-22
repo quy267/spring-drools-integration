@@ -6,12 +6,15 @@ import org.slf4j.MDC;
 import java.util.UUID;
 
 /**
- * Utility class for structured logging with correlation IDs.
+ * Utility class for structured logging with correlation IDs and client IP tracking.
  * This class provides methods for logging with correlation IDs and other structured information.
  */
 public class LoggingUtils {
 
     private static final String CORRELATION_ID = "correlationId";
+    
+    // ThreadLocal to store client IP address
+    private static final ThreadLocal<String> CLIENT_IP = new ThreadLocal<>();
     
     /**
      * Gets the current correlation ID from MDC or creates a new one if not present.
@@ -43,6 +46,33 @@ public class LoggingUtils {
      */
     public static void clearCorrelationId() {
         MDC.remove(CORRELATION_ID);
+    }
+    
+    /**
+     * Sets the client IP address in the thread local.
+     *
+     * @param clientIp The client IP address to set
+     */
+    public static void setClientIp(String clientIp) {
+        if (clientIp != null) {
+            CLIENT_IP.set(clientIp);
+        }
+    }
+    
+    /**
+     * Gets the client IP address from the thread local.
+     *
+     * @return The client IP address, or null if not set
+     */
+    public static String getClientIp() {
+        return CLIENT_IP.get();
+    }
+    
+    /**
+     * Clears the client IP address from the thread local.
+     */
+    public static void clearClientIp() {
+        CLIENT_IP.remove();
     }
     
     /**

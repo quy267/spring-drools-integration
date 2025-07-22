@@ -5,6 +5,8 @@ import com.example.springdroolsintegration.config.RuleHotReloadService;
 import com.example.springdroolsintegration.service.RuleAuditService;
 import com.example.springdroolsintegration.service.RuleManagementService;
 import com.example.springdroolsintegration.util.ExcelValidationUtil;
+import com.example.springdroolsintegration.util.FileValidator;
+import com.example.springdroolsintegration.util.SecureFileStorage;
 import org.drools.decisiontable.DecisionTableProviderImpl;
 import org.kie.api.KieBase;
 import org.kie.api.KieServices;
@@ -28,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -54,6 +57,8 @@ public class RuleManagementServiceImpl implements RuleManagementService {
     private final KieBase kieBase;
     private final RuleHotReloadService ruleHotReloadService;
     private final RuleAuditService ruleAuditService;
+    private final FileValidator fileValidator;
+    private final SecureFileStorage secureFileStorage;
     
     @Value("${app.rules.upload.dir:${java.io.tmpdir}/rules/uploads}")
     private String uploadDir;
@@ -73,18 +78,24 @@ public class RuleManagementServiceImpl implements RuleManagementService {
      * @param kieBase KieBase for rule execution
      * @param ruleHotReloadService Service for hot-reloading rules
      * @param ruleAuditService Service for audit logging
+     * @param fileValidator Validator for uploaded files
+     * @param secureFileStorage Secure storage for uploaded files
      */
     public RuleManagementServiceImpl(DroolsProperties droolsProperties, 
                                     KieContainer kieContainer,
                                     KieBase kieBase,
                                     RuleHotReloadService ruleHotReloadService,
-                                    RuleAuditService ruleAuditService) {
+                                    RuleAuditService ruleAuditService,
+                                    FileValidator fileValidator,
+                                    SecureFileStorage secureFileStorage) {
         this.droolsProperties = droolsProperties;
         this.kieContainer = kieContainer;
         this.kieBase = kieBase;
         this.kieServices = KieServices.Factory.get();
         this.ruleHotReloadService = ruleHotReloadService;
         this.ruleAuditService = ruleAuditService;
+        this.fileValidator = fileValidator;
+        this.secureFileStorage = secureFileStorage;
         
         // Create upload and backup directories if they don't exist
         createDirectoryIfNotExists(uploadDir);
@@ -97,9 +108,16 @@ public class RuleManagementServiceImpl implements RuleManagementService {
     public Map<String, Object> uploadRuleFile(MultipartFile file, String version) throws IOException {
         logger.info("Uploading rule file: {}, version: {}", file.getOriginalFilename(), version);
         
-        // Validate file
-        Map<String, Object> validationResult = validateRuleFile(file);
-        if (!(boolean) validationResult.get("valid")) {
+        // Validate file using FileValidator
+        String validationError = fileValidator.getRuleFileValidationError(file);
+        if (validationError != null) {
+            logger.warn("File validation failed: {}", validationError);
+            Map<String, Object> result = new HashMap<>();
+            result.put("valid", false);
+            result.put("success", false);
+            result.put("message", validationError);
+            result.put("timestamp", Instant.now().toString());
+            
             // Log failed validation
             ruleAuditService.logUploadEvent(
                     file.getOriginalFilename(),
@@ -107,9 +125,9 @@ public class RuleManagementServiceImpl implements RuleManagementService {
                     version,
                     "system", // In a real app, this would be the authenticated user
                     false,
-                    "Upload failed due to validation: " + validationResult.get("message")
+                    "Upload failed due to validation: " + validationError
             );
-            return validationResult;
+            return result;
         }
         
         // Create version string
@@ -119,9 +137,34 @@ public class RuleManagementServiceImpl implements RuleManagementService {
         // Create backup of existing rules
         createBackup();
         
-        // Save file to upload directory
+        // Save file securely using SecureFileStorage
         String fileName = file.getOriginalFilename();
-        String savedFilePath = saveFile(file, versionStr);
+        String subdirectory = versionStr.isEmpty() ? null : versionStr;
+        
+        Path savedPath;
+        try {
+            // Store file securely
+            savedPath = secureFileStorage.storeFile(file, subdirectory);
+        } catch (SecurityException e) {
+            logger.error("Security error storing file: {}", e.getMessage(), e);
+            Map<String, Object> result = new HashMap<>();
+            result.put("success", false);
+            result.put("message", "Security error: " + e.getMessage());
+            result.put("timestamp", Instant.now().toString());
+            
+            // Log failed upload
+            ruleAuditService.logUploadEvent(
+                    fileName,
+                    null,
+                    versionStr,
+                    "system",
+                    false,
+                    "Upload failed due to security error: " + e.getMessage()
+            );
+            return result;
+        }
+        
+        String savedFilePath = savedPath.toString();
         
         // Reload rules
         Map<String, Object> reloadResult = reloadRules();
@@ -159,60 +202,28 @@ public class RuleManagementServiceImpl implements RuleManagementService {
         
         Map<String, Object> result = new HashMap<>();
         
-        // Check if file is empty
-        if (file.isEmpty()) {
+        // Use FileValidator to validate the file
+        String validationError = fileValidator.getRuleFileValidationError(file);
+        if (validationError != null) {
+            logger.warn("File validation failed: {}", validationError);
             result.put("valid", false);
-            result.put("message", "File is empty");
+            result.put("message", validationError);
+            result.put("timestamp", Instant.now().toString());
             
             // Log validation event
             ruleAuditService.logValidationEvent(
-                    "unknown", // No filename available
+                    file.getOriginalFilename() != null ? file.getOriginalFilename() : "unknown",
                     "system", // In a real app, this would be the authenticated user
                     false,
-                    "Validation failed: File is empty"
+                    "Validation failed: " + validationError
             );
             
             return result;
         }
         
-        // Check file extension
+        // Get file extension for additional validations
         String fileName = file.getOriginalFilename();
-        if (fileName == null || fileName.isEmpty()) {
-            result.put("valid", false);
-            result.put("message", "Invalid file name");
-            
-            // Log validation event
-            ruleAuditService.logValidationEvent(
-                    "unknown", // No valid filename available
-                    "system",
-                    false,
-                    "Validation failed: Invalid file name"
-            );
-            
-            return result;
-        }
-        
-        // Get file extension
         String fileExtension = getFileExtension(fileName);
-        
-        // Check if extension is supported
-        List<String> supportedExtensions = getSupportedExtensions();
-        if (!supportedExtensions.contains(fileExtension)) {
-            String message = "Unsupported file extension: " + fileExtension + 
-                    ". Supported extensions: " + String.join(", ", supportedExtensions);
-            result.put("valid", false);
-            result.put("message", message);
-            
-            // Log validation event
-            ruleAuditService.logValidationEvent(
-                    fileName,
-                    "system",
-                    false,
-                    "Validation failed: " + message
-            );
-            
-            return result;
-        }
         
         // For Excel files, perform additional validation
         if (fileExtension.equals(".xls") || fileExtension.equals(".xlsx")) {
@@ -221,6 +232,7 @@ public class RuleManagementServiceImpl implements RuleManagementService {
                 result.put("valid", false);
                 result.put("message", "Excel file validation failed");
                 result.put("errors", excelValidationErrors);
+                result.put("timestamp", Instant.now().toString());
                 
                 // Log validation event
                 ruleAuditService.logValidationEvent(
@@ -777,31 +789,7 @@ public class RuleManagementServiceImpl implements RuleManagementService {
         );
     }
     
-    /**
-     * Saves a file to the upload directory.
-     *
-     * @param file The file to save
-     * @param version The version string
-     * @return The path to the saved file
-     * @throws IOException if there is an error saving the file
-     */
-    private String saveFile(MultipartFile file, String version) throws IOException {
-        String originalFilename = file.getOriginalFilename();
-        String fileExtension = getFileExtension(originalFilename);
-        String baseFilename = originalFilename.substring(0, originalFilename.lastIndexOf('.'));
-        
-        // Create filename with version if enabled
-        String filename = versioningEnabled && !version.isEmpty() ? 
-                baseFilename + "_" + version + fileExtension : originalFilename;
-        
-        // Create path
-        Path filePath = Paths.get(uploadDir, filename);
-        
-        // Save file
-        Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-        
-        return filePath.toString();
-    }
+    // The saveFile method has been replaced by SecureFileStorage.storeFile
     
     /**
      * Creates a directory if it doesn't exist.
