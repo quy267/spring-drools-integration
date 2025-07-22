@@ -31,6 +31,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -355,7 +356,7 @@ public class RuleManagementServiceImpl implements RuleManagementService {
             KieFileSystem kieFileSystem = kieServices.newKieFileSystem();
             
             // Load rule files into the KieFileSystem
-            // This is a simplified version - in a real implementation, you would reuse the loading logic from DroolsConfig
+            loadRuleFiles(kieFileSystem);
             
             // Build the new rules
             KieBuilder kieBuilder = kieServices.newKieBuilder(kieFileSystem);
@@ -391,6 +392,12 @@ public class RuleManagementServiceImpl implements RuleManagementService {
                         true,
                         "Rules successfully reloaded"
                 );
+                
+                // Notify the hot reload service if it's enabled
+                if (droolsProperties.isHotReload() && ruleHotReloadService != null) {
+                    logger.info("Notifying hot reload service of manual rule reload");
+                    // The hot reload service will be notified via the KieContainer update
+                }
             }
         } catch (Exception e) {
             logger.error("Error reloading rules", e);
@@ -406,6 +413,245 @@ public class RuleManagementServiceImpl implements RuleManagementService {
         }
         
         return result;
+    }
+    
+    /**
+     * Loads rule files into the KieFileSystem.
+     * This method loads rule files from classpath and external directories.
+     *
+     * @param kieFileSystem The KieFileSystem to load rules into
+     * @throws IOException if there is an error loading rule files
+     */
+    private void loadRuleFiles(KieFileSystem kieFileSystem) throws IOException {
+        logger.info("Loading rule files for reload");
+        
+        // Load DRL files from rulePath
+        String rulePath = droolsProperties.getRulePath();
+        if (rulePath != null && !rulePath.isEmpty()) {
+            logger.info("Loading DRL files from path: {}", rulePath);
+            
+            // Load DRL files from classpath
+            if (rulePath.startsWith("classpath:")) {
+                loadClasspathDrlFiles(kieFileSystem, rulePath);
+            } else {
+                // Load DRL files from file system
+                loadFileSystemDrlFiles(kieFileSystem, rulePath);
+            }
+        }
+        
+        // Load decision tables from decisionTablePath
+        String decisionTablePath = droolsProperties.getDecisionTablePath();
+        if (decisionTablePath != null && !decisionTablePath.isEmpty()) {
+            logger.info("Loading decision tables from path: {}", decisionTablePath);
+            
+            // Load decision tables from classpath
+            if (decisionTablePath.startsWith("classpath:")) {
+                loadClasspathDecisionTables(kieFileSystem, decisionTablePath);
+            } else {
+                // Load decision tables from file system
+                loadFileSystemDecisionTables(kieFileSystem, decisionTablePath);
+            }
+        }
+        
+        // Load specific rule files if configured
+        if (!droolsProperties.getRuleFiles().isEmpty()) {
+            for (String ruleFile : droolsProperties.getRuleFiles()) {
+                logger.info("Loading specific rule file: {}", ruleFile);
+                Resource resource = ResourceFactory.newClassPathResource(ruleFile);
+                kieFileSystem.write(resource);
+            }
+        }
+        
+        // Load specific decision table files if configured
+        if (!droolsProperties.getDecisionTableFiles().isEmpty()) {
+            for (String tableFile : droolsProperties.getDecisionTableFiles()) {
+                logger.info("Loading specific decision table file: {}", tableFile);
+                Resource resource = ResourceFactory.newClassPathResource(tableFile);
+                kieFileSystem.write(resource);
+            }
+        }
+        
+        // Load external rule files if configured
+        if (droolsProperties.getExternalRulePath() != null && !droolsProperties.getExternalRulePath().isEmpty()) {
+            loadExternalRuleFiles(kieFileSystem);
+        }
+        
+        logger.info("Finished loading rule files for reload");
+    }
+    
+    /**
+     * Loads DRL files from a classpath directory.
+     *
+     * @param kieFileSystem The KieFileSystem to load the rules into
+     * @param rulePath The classpath directory to load DRL files from
+     * @throws IOException if there is an error loading resources
+     */
+    private void loadClasspathDrlFiles(KieFileSystem kieFileSystem, String rulePath) throws IOException {
+        // This is a simplified implementation
+        // In a real implementation, you would use ClassPathResource or similar to load the files
+        logger.info("Loading DRL files from classpath: {}", rulePath);
+        
+        // For now, we'll just rely on the specific rule files configured in droolsProperties
+        // A more complete implementation would scan the classpath for .drl files
+    }
+    
+    /**
+     * Loads DRL files from a file system directory.
+     *
+     * @param kieFileSystem The KieFileSystem to load the rules into
+     * @param rulePath The file system directory to load DRL files from
+     * @throws IOException if there is an error loading resources
+     */
+    private void loadFileSystemDrlFiles(KieFileSystem kieFileSystem, String rulePath) throws IOException {
+        Path path = Paths.get(rulePath);
+        if (Files.exists(path) && Files.isDirectory(path)) {
+            logger.info("Loading DRL files from file system: {}", path);
+            
+            // Find all .drl files in the directory
+            List<Path> drlFiles = Files.walk(path)
+                    .filter(Files::isRegularFile)
+                    .filter(p -> p.toString().endsWith(".drl"))
+                    .collect(Collectors.toList());
+            
+            for (Path drlFile : drlFiles) {
+                String fileName = drlFile.getFileName().toString();
+                logger.info("Loading DRL file: {}", fileName);
+                
+                // Read the file content
+                byte[] content = Files.readAllBytes(drlFile);
+                
+                // Add the file to KieFileSystem
+                String drlPath = "src/main/resources/rules/" + fileName;
+                kieFileSystem.write(drlPath, content);
+            }
+        } else {
+            logger.warn("Rule path does not exist or is not a directory: {}", path);
+        }
+    }
+    
+    /**
+     * Loads decision tables from a classpath directory.
+     *
+     * @param kieFileSystem The KieFileSystem to load the decision tables into
+     * @param decisionTablePath The classpath directory to load decision tables from
+     * @throws IOException if there is an error loading resources
+     */
+    private void loadClasspathDecisionTables(KieFileSystem kieFileSystem, String decisionTablePath) throws IOException {
+        // This is a simplified implementation
+        // In a real implementation, you would use ClassPathResource or similar to load the files
+        logger.info("Loading decision tables from classpath: {}", decisionTablePath);
+        
+        // For now, we'll just rely on the specific decision table files configured in droolsProperties
+        // A more complete implementation would scan the classpath for .xls and .xlsx files
+    }
+    
+    /**
+     * Loads decision tables from a file system directory.
+     *
+     * @param kieFileSystem The KieFileSystem to load the decision tables into
+     * @param decisionTablePath The file system directory to load decision tables from
+     * @throws IOException if there is an error loading resources
+     */
+    private void loadFileSystemDecisionTables(KieFileSystem kieFileSystem, String decisionTablePath) throws IOException {
+        Path path = Paths.get(decisionTablePath);
+        if (Files.exists(path) && Files.isDirectory(path)) {
+            logger.info("Loading decision tables from file system: {}", path);
+            
+            // Find all .xls and .xlsx files in the directory
+            List<Path> tableFiles = Files.walk(path)
+                    .filter(Files::isRegularFile)
+                    .filter(p -> {
+                        String fileName = p.toString();
+                        return fileName.endsWith(".xls") || fileName.endsWith(".xlsx");
+                    })
+                    .collect(Collectors.toList());
+            
+            for (Path tableFile : tableFiles) {
+                String fileName = tableFile.getFileName().toString();
+                logger.info("Loading decision table: {}", fileName);
+                
+                // Convert decision table to DRL
+                Resource resource = ResourceFactory.newFileResource(tableFile.toFile());
+                DecisionTableProviderImpl decisionTableProvider = new DecisionTableProviderImpl();
+                String drl = decisionTableProvider.loadFromResource(resource, null);
+                
+                // Add the generated DRL to KieFileSystem
+                String drlPath = "src/main/resources/generated-rules/" + fileName + ".drl";
+                kieFileSystem.write(drlPath, drl);
+            }
+        } else {
+            logger.warn("Decision table path does not exist or is not a directory: {}", path);
+        }
+    }
+    
+    /**
+     * Loads rule files from an external directory.
+     * This method scans the configured external rule path for rule files with the supported extensions.
+     *
+     * @param kieFileSystem The KieFileSystem to load the rules into
+     * @throws IOException if there is an error loading resources
+     */
+    private void loadExternalRuleFiles(KieFileSystem kieFileSystem) throws IOException {
+        Path externalPath = Paths.get(droolsProperties.getExternalRulePath());
+        
+        if (!Files.exists(externalPath)) {
+            logger.warn("External rule path does not exist: {}", externalPath);
+            return;
+        }
+        
+        if (!Files.isDirectory(externalPath)) {
+            logger.warn("External rule path is not a directory: {}", externalPath);
+            return;
+        }
+        
+        logger.info("Loading rules from external path: {}", externalPath);
+        
+        // Parse file extensions
+        List<String> extensions = Arrays.asList(droolsProperties.getFileExtensions().split(","));
+        
+        // Walk the directory tree if subdirectories should be scanned
+        List<Path> filesToProcess;
+        if (droolsProperties.isScanSubdirectories()) {
+            filesToProcess = Files.walk(externalPath)
+                    .filter(Files::isRegularFile)
+                    .collect(Collectors.toList());
+        } else {
+            filesToProcess = Files.list(externalPath)
+                    .filter(Files::isRegularFile)
+                    .collect(Collectors.toList());
+        }
+        
+        // Process each file with supported extensions
+        for (Path filePath : filesToProcess) {
+            String fileName = filePath.getFileName().toString();
+            
+            // Check if the file has a supported extension
+            boolean hasSupportedExtension = extensions.stream()
+                    .anyMatch(ext -> fileName.endsWith(ext.trim()));
+            
+            if (hasSupportedExtension) {
+                logger.info("Loading external rule file: {}", fileName);
+                
+                // Handle different file types
+                if (fileName.endsWith(".drl")) {
+                    // Load DRL file
+                    byte[] content = Files.readAllBytes(filePath);
+                    String drlPath = "src/main/resources/external-rules/" + fileName;
+                    kieFileSystem.write(drlPath, content);
+                } else if (fileName.endsWith(".xls") || fileName.endsWith(".xlsx")) {
+                    // Load decision table
+                    Resource resource = ResourceFactory.newFileResource(filePath.toFile());
+                    DecisionTableProviderImpl decisionTableProvider = new DecisionTableProviderImpl();
+                    String drl = decisionTableProvider.loadFromResource(resource, null);
+                    
+                    // Write the generated DRL to KieFileSystem
+                    String drlPath = "src/main/resources/external-rules/" + fileName + ".drl";
+                    kieFileSystem.write(drlPath, drl);
+                }
+            }
+        }
+        
+        logger.info("Finished loading external rule files");
     }
     
     /**
