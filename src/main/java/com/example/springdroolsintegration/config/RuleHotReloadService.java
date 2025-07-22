@@ -337,7 +337,7 @@ public class RuleHotReloadService implements InitializingBean, DisposableBean {
                     logger.info("Loading DRL file: {}", resource.getFilename());
                     // Add the resource to KieFileSystem
                     kieFileSystem.write("src/main/resources/" + rulePath + resource.getFilename(), 
-                            resource.getInputStream());
+                            org.apache.commons.io.IOUtils.toByteArray(resource.getInputStream()));
                 }
             }
             
@@ -352,7 +352,7 @@ public class RuleHotReloadService implements InitializingBean, DisposableBean {
                     logger.info("Loading XLS decision table: {}", resource.getFilename());
                     // Add the resource to KieFileSystem
                     kieFileSystem.write("src/main/resources/" + decisionTablePath + resource.getFilename(), 
-                            resource.getInputStream());
+                            org.apache.commons.io.IOUtils.toByteArray(resource.getInputStream()));
                 }
             }
             
@@ -364,7 +364,7 @@ public class RuleHotReloadService implements InitializingBean, DisposableBean {
                     logger.info("Loading XLSX decision table: {}", resource.getFilename());
                     // Add the resource to KieFileSystem
                     kieFileSystem.write("src/main/resources/" + decisionTablePath + resource.getFilename(), 
-                            resource.getInputStream());
+                            org.apache.commons.io.IOUtils.toByteArray(resource.getInputStream()));
                 }
             }
         } catch (IOException e) {
