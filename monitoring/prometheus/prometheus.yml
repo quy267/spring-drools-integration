@@ -1,31 +1,54 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  scrape_timeout: 10s
 
-scrape_configs:
-  - job_name: 'spring-drools-integration'
-    metrics_path: '/actuator/prometheus'
-    scrape_interval: 5s
-    static_configs:
-      - targets: ['localhost:8080']
-    relabel_configs:
-      - source_labels: [__address__]
-        target_label: instance
-        replacement: 'spring-drools-integration'
-
-  - job_name: 'prometheus'
-    static_configs:
-      - targets: ['localhost:9090']
-
+# Alertmanager configuration
 alerting:
   alertmanagers:
     - static_configs:
         - targets:
           # - alertmanager:9093
 
+# Load rules once and periodically evaluate them
 rule_files:
-  # - "first_rules.yml"
-  # - "second_rules.yml"
+  - "rules/alert_rules.yml"
 
-# Alert rules for Drools metrics
-  - "drools_rules.yml"
+# A scrape configuration containing exactly one endpoint to scrape:
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: "prometheus"
+    # metrics_path defaults to '/metrics'
+    # scheme defaults to 'http'.
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Spring Boot application with Actuator endpoints
+  - job_name: "spring-drools-integration"
+    metrics_path: "/actuator/prometheus"
+    scrape_interval: 5s
+    static_configs:
+      - targets: ["localhost:8080"]
+    
+    # Add labels to identify the application
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - source_labels: [__address__]
+        target_label: application
+        replacement: "spring-drools-integration"
+
+  # JVM metrics via JMX exporter (optional)
+  - job_name: "jmx-exporter"
+    static_configs:
+      - targets: ["localhost:9404"]
+        labels:
+          application: "spring-drools-integration"
+          instance: "jvm"
+
+  # Node exporter for host metrics (optional)
+  - job_name: "node-exporter"
+    static_configs:
+      - targets: ["localhost:9100"]
+        labels:
+          instance: "host"

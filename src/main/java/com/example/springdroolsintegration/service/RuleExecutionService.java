@@ -91,6 +91,40 @@ public interface RuleExecutionService {
     void disposeSession(KieSession session);
     
     /**
+     * Executes rules on a large collection of fact objects by processing them in smaller chunks.
+     * This method is optimized for memory usage with large datasets.
+     * 
+     * @param <T> The type of the fact objects
+     * @param facts The collection of fact objects to execute rules on
+     * @param chunkSize The number of facts to process in each chunk
+     * @return The collection of fact objects after rule execution
+     */
+    <T> List<T> executeRulesForChunkedBatch(List<T> facts, int chunkSize);
+    
+    /**
+     * Executes rules on a large collection of fact objects by processing them in smaller chunks,
+     * with a specific rule session name. This method is optimized for memory usage with large datasets.
+     * 
+     * @param <T> The type of the fact objects
+     * @param facts The collection of fact objects to execute rules on
+     * @param chunkSize The number of facts to process in each chunk
+     * @param sessionName The name of the rule session to use
+     * @return The collection of fact objects after rule execution
+     */
+    <T> List<T> executeRulesForChunkedBatch(List<T> facts, int chunkSize, String sessionName);
+    
+    /**
+     * Executes rules asynchronously on a large collection of fact objects by processing them in smaller chunks.
+     * This method is optimized for memory usage with large datasets.
+     * 
+     * @param <T> The type of the fact objects
+     * @param facts The collection of fact objects to execute rules on
+     * @param chunkSize The number of facts to process in each chunk
+     * @return A CompletableFuture that will complete with the collection of fact objects after rule execution
+     */
+    <T> CompletableFuture<List<T>> executeRulesForChunkedBatchAsync(List<T> facts, int chunkSize);
+    
+    /**
      * Gets rule execution statistics.
      * 
      * @return A map of rule execution statistics

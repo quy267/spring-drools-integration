@@ -1,5 +1,6 @@
 package com.example.springdroolsintegration.actuator;
 
+import com.example.springdroolsintegration.config.AlertingConfig;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -10,9 +11,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
+import java.lang.management.MemoryUsage;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Custom metrics for the rule engine.
@@ -24,6 +29,8 @@ public class RuleEngineMetrics {
     private static final Logger logger = LoggerFactory.getLogger(RuleEngineMetrics.class);
     
     private final MeterRegistry meterRegistry;
+    private final AlertingConfig alertingConfig;
+    private final MemoryMXBean memoryMXBean;
     
     // Execution counters
     private final Counter totalExecutionsCounter;
@@ -41,19 +48,38 @@ public class RuleEngineMetrics {
     private final Timer batchExecutionTimer;
     private final Timer sessionCreationTimer;
     
+    // Cache metrics
+    private final Counter cacheHitsCounter;
+    private final Counter cacheMissesCounter;
+    private final AtomicLong cacheSize = new AtomicLong(0);
+    private final AtomicLong cacheEvictions = new AtomicLong(0);
+    
     // Rule-specific metrics
     private final Map<String, Counter> ruleExecutionCounters = new ConcurrentHashMap<>();
     private final Map<String, Timer> ruleExecutionTimers = new ConcurrentHashMap<>();
+    
+    // Threshold breach counters
+    private final Counter executionTimeWarningCounter;
+    private final Counter executionTimeCriticalCounter;
+    private final Counter sessionPoolWarningCounter;
+    private final Counter sessionPoolCriticalCounter;
+    private final Counter successRateWarningCounter;
+    private final Counter successRateCriticalCounter;
     
     /**
      * Constructor for RuleEngineMetrics.
      * Uses constructor injection for dependencies as per Spring Boot best practices.
      *
      * @param meterRegistry The Micrometer meter registry
+     * @param alertingConfig The alerting configuration
      */
-    public RuleEngineMetrics(MeterRegistry meterRegistry) {
+    public RuleEngineMetrics(MeterRegistry meterRegistry, AlertingConfig alertingConfig) {
         this.meterRegistry = meterRegistry;
-        logger.info("Initializing rule engine metrics");
+        this.alertingConfig = alertingConfig;
+        this.memoryMXBean = ManagementFactory.getMemoryMXBean();
+        
+        logger.info("Initializing rule engine metrics with alerting thresholds: executionTimeWarning={}ms, executionTimeCritical={}ms",
+                alertingConfig.getExecutionTime().getWarningMs(), alertingConfig.getExecutionTime().getCriticalMs());
         
         // Register execution counters
         totalExecutionsCounter = Counter.builder("drools.rule.executions.total")
@@ -104,12 +130,71 @@ public class RuleEngineMetrics {
                 .publishPercentileHistogram()
                 .register(meterRegistry);
         
+        // Register cache metrics
+        cacheHitsCounter = Counter.builder("drools.cache.hits")
+                .description("Number of cache hits")
+                .register(meterRegistry);
+        
+        cacheMissesCounter = Counter.builder("drools.cache.misses")
+                .description("Number of cache misses")
+                .register(meterRegistry);
+        
+        Gauge.builder("drools.cache.size", cacheSize::get)
+                .description("Current size of the rule cache")
+                .register(meterRegistry);
+        
+        Gauge.builder("drools.cache.evictions", cacheEvictions::get)
+                .description("Number of cache evictions")
+                .register(meterRegistry);
+        
+        Gauge.builder("drools.cache.hit.ratio", this::getCacheHitRatio)
+                .description("Cache hit ratio (percentage)")
+                .register(meterRegistry);
+        
         // Register session pool gauge
         Gauge.builder("drools.session.pool.size", () -> 0)
                 .description("Current size of the KieSession pool")
                 .register(meterRegistry);
         
-        logger.info("Rule engine metrics initialized");
+        // Register memory metrics
+        Gauge.builder("drools.memory.heap.used", () -> memoryMXBean.getHeapMemoryUsage().getUsed())
+                .description("Heap memory used (bytes)")
+                .register(meterRegistry);
+        
+        Gauge.builder("drools.memory.heap.max", () -> memoryMXBean.getHeapMemoryUsage().getMax())
+                .description("Maximum heap memory (bytes)")
+                .register(meterRegistry);
+        
+        Gauge.builder("drools.memory.heap.usage", this::getHeapUsagePercentage)
+                .description("Heap memory usage (percentage)")
+                .register(meterRegistry);
+        
+        // Register threshold breach counters
+        executionTimeWarningCounter = Counter.builder("drools.alerts.execution.time.warning")
+                .description("Number of execution time warning threshold breaches")
+                .register(meterRegistry);
+        
+        executionTimeCriticalCounter = Counter.builder("drools.alerts.execution.time.critical")
+                .description("Number of execution time critical threshold breaches")
+                .register(meterRegistry);
+        
+        sessionPoolWarningCounter = Counter.builder("drools.alerts.session.pool.warning")
+                .description("Number of session pool warning threshold breaches")
+                .register(meterRegistry);
+        
+        sessionPoolCriticalCounter = Counter.builder("drools.alerts.session.pool.critical")
+                .description("Number of session pool critical threshold breaches")
+                .register(meterRegistry);
+        
+        successRateWarningCounter = Counter.builder("drools.alerts.success.rate.warning")
+                .description("Number of success rate warning threshold breaches")
+                .register(meterRegistry);
+        
+        successRateCriticalCounter = Counter.builder("drools.alerts.success.rate.critical")
+                .description("Number of success rate critical threshold breaches")
+                .register(meterRegistry);
+        
+        logger.info("Rule engine metrics initialized with alerting enabled: {}", alertingConfig.isEnabled());
     }
     
     /**
@@ -160,6 +245,14 @@ public class RuleEngineMetrics {
                         .register(meterRegistry)
         );
         ruleTimer.record(executionTimeMs, TimeUnit.MILLISECONDS);
+        
+        // Check execution time thresholds
+        checkExecutionTimeThresholds(executionTimeMs);
+        
+        // Periodically check success rate thresholds (every 100 executions)
+        if (totalExecutionsCounter.count() % 100 == 0) {
+            checkSuccessRateThresholds();
+        }
         
         logger.debug("Recorded rule execution: rule={}, package={}, time={}ms, successful={}", 
                 ruleName, rulePackage, executionTimeMs, successful);
@@ -225,11 +318,141 @@ public class RuleEngineMetrics {
      * Updates the session pool size gauge.
      *
      * @param poolSize The current pool size
+     * @param maxPoolSize The maximum pool size
      */
-    public void updateSessionPoolSize(int poolSize) {
+    public void updateSessionPoolSize(int poolSize, int maxPoolSize) {
         Gauge.builder("drools.session.pool.size", () -> poolSize)
                 .description("Current size of the KieSession pool")
                 .register(meterRegistry);
-        logger.debug("Updated session pool size: {}", poolSize);
+        
+        // Check if pool size exceeds thresholds
+        if (alertingConfig.isEnabled()) {
+            if (alertingConfig.isSessionPoolCritical(poolSize, maxPoolSize)) {
+                sessionPoolCriticalCounter.increment();
+                logger.warn("SESSION POOL CRITICAL ALERT: Pool size {} exceeds critical threshold ({}% of max {})",
+                        poolSize, alertingConfig.getSessionPool().getCriticalUtilizationPercent(), maxPoolSize);
+            } else if (alertingConfig.isSessionPoolWarning(poolSize, maxPoolSize)) {
+                sessionPoolWarningCounter.increment();
+                logger.warn("SESSION POOL WARNING: Pool size {} exceeds warning threshold ({}% of max {})",
+                        poolSize, alertingConfig.getSessionPool().getWarningUtilizationPercent(), maxPoolSize);
+            }
+        }
+        
+        logger.debug("Updated session pool size: {}/{} ({}%)", 
+                poolSize, maxPoolSize, (double) poolSize / maxPoolSize * 100);
+    }
+    
+    /**
+     * Records a cache hit.
+     */
+    public void recordCacheHit() {
+        cacheHitsCounter.increment();
+    }
+    
+    /**
+     * Records a cache miss.
+     */
+    public void recordCacheMiss() {
+        cacheMissesCounter.increment();
+    }
+    
+    /**
+     * Updates the cache size.
+     *
+     * @param size The current cache size
+     */
+    public void updateCacheSize(long size) {
+        cacheSize.set(size);
+    }
+    
+    /**
+     * Records a cache eviction.
+     */
+    public void recordCacheEviction() {
+        cacheEvictions.incrementAndGet();
+    }
+    
+    /**
+     * Calculates the cache hit ratio.
+     *
+     * @return The cache hit ratio as a percentage
+     */
+    private double getCacheHitRatio() {
+        double hits = cacheHitsCounter.count();
+        double misses = cacheMissesCounter.count();
+        double total = hits + misses;
+        
+        if (total == 0) {
+            return 0.0;
+        }
+        
+        return hits / total * 100.0;
+    }
+    
+    /**
+     * Calculates the heap usage percentage.
+     *
+     * @return The heap usage as a percentage
+     */
+    private double getHeapUsagePercentage() {
+        MemoryUsage heapUsage = memoryMXBean.getHeapMemoryUsage();
+        long used = heapUsage.getUsed();
+        long max = heapUsage.getMax();
+        
+        if (max <= 0) {
+            return 0.0;
+        }
+        
+        return (double) used / max * 100.0;
+    }
+    
+    /**
+     * Checks if the execution time exceeds thresholds and records alerts if necessary.
+     *
+     * @param executionTimeMs The execution time in milliseconds
+     */
+    private void checkExecutionTimeThresholds(long executionTimeMs) {
+        if (!alertingConfig.isEnabled()) {
+            return;
+        }
+        
+        if (alertingConfig.isExecutionTimeCritical(executionTimeMs)) {
+            executionTimeCriticalCounter.increment();
+            logger.warn("EXECUTION TIME CRITICAL ALERT: Execution time {}ms exceeds critical threshold ({}ms)",
+                    executionTimeMs, alertingConfig.getExecutionTime().getCriticalMs());
+        } else if (alertingConfig.isExecutionTimeWarning(executionTimeMs)) {
+            executionTimeWarningCounter.increment();
+            logger.warn("EXECUTION TIME WARNING: Execution time {}ms exceeds warning threshold ({}ms)",
+                    executionTimeMs, alertingConfig.getExecutionTime().getWarningMs());
+        }
+    }
+    
+    /**
+     * Checks if the success rate is below thresholds and records alerts if necessary.
+     */
+    private void checkSuccessRateThresholds() {
+        if (!alertingConfig.isEnabled()) {
+            return;
+        }
+        
+        double successful = successfulExecutionsCounter.count();
+        double failed = failedExecutionsCounter.count();
+        double total = successful + failed;
+        
+        if (total == 0) {
+            return;
+        }
+        
+        double successRate = successful / total * 100.0;
+        
+        if (alertingConfig.isSuccessRateCritical(successRate)) {
+            successRateCriticalCounter.increment();
+            logger.warn("SUCCESS RATE CRITICAL ALERT: Success rate {}% is below critical threshold ({}%)",
+                    String.format("%.2f", successRate), alertingConfig.getSuccessRate().getCriticalPercent());
+        } else if (alertingConfig.isSuccessRateWarning(successRate)) {
+            successRateWarningCounter.increment();
+            logger.warn("SUCCESS RATE WARNING: Success rate {}% is below warning threshold ({}%)",
+                    String.format("%.2f", successRate), alertingConfig.getSuccessRate().getWarningPercent());
+        }
     }
 }

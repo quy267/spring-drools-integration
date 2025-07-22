@@ -13,6 +13,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.math.BigInteger;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -258,9 +262,25 @@ public class RuleCompilationCacheServiceImpl implements RuleCompilationCacheServ
      * @throws IOException if there is an error reading the resource
      */
     private String calculateResourceChecksum(Resource resource) throws IOException {
-        // For simplicity, use the last modified timestamp as the checksum
+        // For simplicity, use a hash of the resource content as the checksum
         // In a production environment, you might want to use a more robust checksum algorithm
-        return String.valueOf(resource.getLastModified());
+        try (InputStream is = resource.getInputStream()) {
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            MessageDigest digest = MessageDigest.getInstance("MD5");
+            
+            while ((bytesRead = is.read(buffer)) != -1) {
+                digest.update(buffer, 0, bytesRead);
+            }
+            
+            byte[] md5sum = digest.digest();
+            BigInteger bigInt = new BigInteger(1, md5sum);
+            return bigInt.toString(16);
+        } catch (NoSuchAlgorithmException e) {
+            logger.warn("MD5 algorithm not available, using fallback checksum method");
+            // Fallback to a simple hash of the resource path
+            return String.valueOf(resource.toString().hashCode());
+        }
     }
     
     /**

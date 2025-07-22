@@ -1,0 +1,147 @@
+groups:
+  - name: drools_rule_engine_alerts
+    rules:
+      # High response time alerts
+      - alert: DroolsRuleExecutionTimeHigh
+        expr: histogram_quantile(0.95, sum(rate(drools_rule_execution_time_seconds_bucket[5m])) by (le, application, instance)) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rule execution time"
+          description: "95th percentile of rule execution time is above 500ms for {{ $labels.application }} on {{ $labels.instance }}"
+
+      - alert: DroolsRuleExecutionTimeCritical
+        expr: histogram_quantile(0.95, sum(rate(drools_rule_execution_time_seconds_bucket[5m])) by (le, application, instance)) > 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical rule execution time"
+          description: "95th percentile of rule execution time is above 1s for {{ $labels.application }} on {{ $labels.instance }}"
+
+      # Error rate alerts
+      - alert: DroolsRuleExecutionErrorRateHigh
+        expr: sum(rate(drools_rule_executions_failed_total[5m])) by (application, instance) / sum(rate(drools_rule_executions_total[5m])) by (application, instance) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rule execution error rate"
+          description: "Rule execution error rate is above 5% for {{ $labels.application }} on {{ $labels.instance }}"
+
+      - alert: DroolsRuleExecutionErrorRateCritical
+        expr: sum(rate(drools_rule_executions_failed_total[5m])) by (application, instance) / sum(rate(drools_rule_executions_total[5m])) by (application, instance) > 0.1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical rule execution error rate"
+          description: "Rule execution error rate is above 10% for {{ $labels.application }} on {{ $labels.instance }}"
+
+      # Session pool alerts
+      - alert: DroolsSessionPoolUtilizationHigh
+        expr: drools_session_pool_size / drools_session_pool_max_size > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High session pool utilization"
+          description: "Session pool utilization is above 80% for {{ $labels.application }} on {{ $labels.instance }}"
+
+      - alert: DroolsSessionPoolUtilizationCritical
+        expr: drools_session_pool_size / drools_session_pool_max_size > 0.95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical session pool utilization"
+          description: "Session pool utilization is above 95% for {{ $labels.application }} on {{ $labels.instance }}"
+
+      # Cache performance alerts
+      - alert: DroolsCacheHitRateLow
+        expr: drools_cache_hit_ratio < 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low cache hit ratio"
+          description: "Cache hit ratio is below 50% for {{ $labels.application }} on {{ $labels.instance }}"
+
+      # Memory usage alerts
+      - alert: DroolsHighMemoryUsage
+        expr: sum(jvm_memory_used_bytes{area="heap"}) by (application, instance) / sum(jvm_memory_max_bytes{area="heap"}) by (application, instance) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High JVM heap memory usage"
+          description: "JVM heap memory usage is above 85% for {{ $labels.application }} on {{ $labels.instance }}"
+
+      - alert: DroolsCriticalMemoryUsage
+        expr: sum(jvm_memory_used_bytes{area="heap"}) by (application, instance) / sum(jvm_memory_max_bytes{area="heap"}) by (application, instance) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical JVM heap memory usage"
+          description: "JVM heap memory usage is above 95% for {{ $labels.application }} on {{ $labels.instance }}"
+
+      # Application health alerts
+      - alert: DroolsApplicationDown
+        expr: up{application="spring-drools-integration"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Application is down"
+          description: "The Spring Drools Integration application on {{ $labels.instance }} is down"
+
+      - alert: DroolsHealthCheckFailed
+        expr: drools_health_status{component="drools"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Drools health check failed"
+          description: "The Drools health check is failing on {{ $labels.instance }}"
+
+  - name: system_alerts
+    rules:
+      # CPU usage alerts
+      - alert: HighCpuUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 80% on {{ $labels.instance }}"
+
+      - alert: CriticalCpuUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical CPU usage"
+          description: "CPU usage is above 95% on {{ $labels.instance }}"
+
+      # Disk space alerts
+      - alert: LowDiskSpace
+        expr: node_filesystem_avail_bytes / node_filesystem_size_bytes * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space"
+          description: "Disk space is below 15% on {{ $labels.instance }} mount {{ $labels.mountpoint }}"
+
+      - alert: CriticalDiskSpace
+        expr: node_filesystem_avail_bytes / node_filesystem_size_bytes * 100 < 5
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical disk space"
+          description: "Disk space is below 5% on {{ $labels.instance }} mount {{ $labels.mountpoint }}"

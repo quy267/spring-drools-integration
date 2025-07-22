@@ -1,233 +1,200 @@
-# Monitoring Setup for Spring Drools Integration
+# Performance Monitoring Setup for Spring Drools Integration
 
-This document provides instructions for setting up monitoring for the Spring Drools Integration application using Prometheus and Grafana.
+This document describes the performance monitoring setup for the Spring Drools Integration application, including how to use Prometheus and Grafana to monitor rule engine performance, set up alerts, and interpret the metrics.
 
 ## Overview
 
 The monitoring setup consists of:
 
-1. **Spring Boot Actuator**: Exposes metrics, health checks, and other monitoring endpoints from the application
-2. **Prometheus**: Collects and stores metrics from the application
-3. **Grafana**: Visualizes the metrics collected by Prometheus
+1. **Metrics Collection**: Spring Boot Actuator with Micrometer Prometheus registry
+2. **Metrics Storage**: Prometheus time-series database
+3. **Visualization**: Grafana dashboards
+4. **Alerting**: Prometheus alert rules
 
-## Prerequisites
+## Metrics Collection
 
-- Docker and Docker Compose installed
-- Spring Drools Integration application running
+The application exposes metrics through Spring Boot Actuator's Prometheus endpoint at `/actuator/prometheus`. These metrics include:
 
-## Setup Instructions
+- Rule execution counts and rates
+- Rule execution times (with percentiles)
+- Session pool statistics
+- Cache performance metrics
+- Memory usage and JVM metrics
+- Custom business metrics for each rule type
 
-### 1. Configure Spring Boot Application
+## Prometheus Setup
 
-The application is already configured with the necessary dependencies and settings:
+### Configuration
 
-- Spring Boot Actuator is included in the dependencies
-- Prometheus endpoint is exposed at `/actuator/prometheus`
-- Custom health indicators and metrics are implemented
+Prometheus is configured to scrape metrics from the application every 5 seconds. The configuration is in `monitoring/prometheus/prometheus.yml`:
 
-### 2. Start Prometheus
-
-1. Create a directory for Prometheus data:
-
-```bash
-mkdir -p prometheus/data
+```yaml
+scrape_configs:
+  - job_name: 'spring-drools-integration'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['localhost:8080']
 ```
 
-2. Create a Docker Compose file for Prometheus:
+### Alert Rules
+
+Alert rules are defined in `monitoring/prometheus/rules/alert_rules.yml` and include:
+
+- **High Response Time Alerts**:
+  - Warning: 95th percentile > 500ms for 2 minutes
+  - Critical: 95th percentile > 1s for 1 minute
+
+- **Error Rate Alerts**:
+  - Warning: Error rate > 5% for 2 minutes
+  - Critical: Error rate > 10% for 1 minute
+
+- **Session Pool Alerts**:
+  - Warning: Pool utilization > 80% for 5 minutes
+  - Critical: Pool utilization > 95% for 2 minutes
+
+- **Cache Performance Alerts**:
+  - Warning: Cache hit ratio < 50% for 10 minutes
+
+- **Memory Usage Alerts**:
+  - Warning: JVM heap usage > 85% for 5 minutes
+  - Critical: JVM heap usage > 95% for 2 minutes
+
+- **Application Health Alerts**:
+  - Critical: Application down for 1 minute
+  - Critical: Drools health check failing for 1 minute
+
+### Starting Prometheus
+
+To start Prometheus with the configuration:
 
 ```bash
-cat > docker-compose-prometheus.yml << EOF
-version: '3'
-services:
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./monitoring/prometheus/drools_rules.yml:/etc/prometheus/drools_rules.yml
-      - ./prometheus/data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--web.enable-lifecycle'
-    restart: unless-stopped
-EOF
+cd monitoring/prometheus
+prometheus --config.file=prometheus.yml
 ```
 
-3. Start Prometheus:
+Prometheus UI will be available at http://localhost:9090
+
+## Grafana Setup
+
+### Dashboard
+
+A comprehensive dashboard is provided in `monitoring/grafana/rule_engine_dashboard.json`. The dashboard includes:
+
+- **Overview Panels**:
+  - Rule execution rate
+  - Rule execution time (50th, 95th, 99th percentiles)
+  - Success rate gauge
+  - Session pool utilization gauge
+  - Cache hit ratio gauge
+  - JVM heap usage gauge
+
+- **Detailed Metrics**:
+  - Session creation/disposal rate
+  - Session creation time
+  - Cache statistics (hits, misses, size)
+  - JVM memory usage (used, committed, max)
+
+### Importing the Dashboard
+
+1. Start Grafana
+2. Go to Dashboards > Import
+3. Upload the JSON file or paste its contents
+4. Select the Prometheus data source
+5. Click Import
+
+Grafana will be available at http://localhost:3000
+
+## Running the Monitoring Stack with Docker Compose
+
+A Docker Compose file is provided to run the entire monitoring stack:
 
 ```bash
-docker-compose -f docker-compose-prometheus.yml up -d
+cd monitoring
+docker-compose up -d
 ```
 
-4. Verify that Prometheus is running by accessing the web UI at http://localhost:9090
+This will start:
+- Prometheus on port 9090
+- Grafana on port 3000
+- Node Exporter for host metrics (if configured)
 
-### 3. Start Grafana
+## Key Performance Indicators (KPIs)
 
-1. Create a directory for Grafana data:
+The following KPIs should be monitored:
 
-```bash
-mkdir -p grafana/data
-```
+1. **Rule Execution Time**: Should be below 500ms for 95% of requests
+2. **Success Rate**: Should be above 95%
+3. **Session Pool Utilization**: Should be below 80% during normal operation
+4. **Cache Hit Ratio**: Should be above 80% for optimal performance
+5. **JVM Heap Usage**: Should be below 85% to avoid GC pressure
 
-2. Create a Docker Compose file for Grafana:
+## Troubleshooting Common Performance Issues
 
-```bash
-cat > docker-compose-grafana.yml << EOF
-version: '3'
-services:
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./grafana/data:/var/lib/grafana
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-    restart: unless-stopped
-EOF
-```
+### High Rule Execution Time
 
-3. Start Grafana:
+Possible causes:
+- Complex rules with many conditions
+- Large datasets being processed
+- Insufficient caching
+- JVM memory pressure
 
-```bash
-docker-compose -f docker-compose-grafana.yml up -d
-```
+Solutions:
+- Review and optimize rule complexity
+- Use chunked batch processing for large datasets
+- Increase cache size or improve caching strategy
+- Increase JVM heap size or optimize memory usage
 
-4. Verify that Grafana is running by accessing the web UI at http://localhost:3000 (login with admin/admin)
+### Low Cache Hit Ratio
 
-### 4. Configure Grafana
+Possible causes:
+- Cache size too small
+- Highly variable input data
+- Cache eviction happening too frequently
 
-1. Add Prometheus as a data source:
-   - Go to Configuration > Data Sources
-   - Click "Add data source"
-   - Select "Prometheus"
-   - Set the URL to http://prometheus:9090 (or http://localhost:9090 if not using Docker networking)
-   - Click "Save & Test"
+Solutions:
+- Increase cache size
+- Review caching strategy and keys
+- Monitor cache evictions and adjust accordingly
 
-2. Import the Drools dashboard:
-   - Go to Dashboards > Import
-   - Click "Upload JSON file"
-   - Select the `monitoring/grafana/drools-dashboard.json` file
-   - Click "Import"
+### High Session Pool Utilization
 
-## Monitoring Features
+Possible causes:
+- High concurrent request volume
+- Sessions not being returned to the pool
+- Pool size too small
 
-### Health Checks
+Solutions:
+- Increase session pool size
+- Check for session leaks
+- Implement request throttling if necessary
 
-The application provides the following health checks:
+### High Error Rate
 
-- **Drools Rule Engine Health**: Checks if the rule engine is functioning properly
-- **Decision Table Health**: Validates decision tables
+Possible causes:
+- Invalid rule definitions
+- Data validation issues
+- Resource constraints
 
-Access health information at: http://localhost:8080/actuator/health
+Solutions:
+- Review error logs for specific error types
+- Validate rule definitions
+- Check input data validation
+- Increase resource allocation if necessary
 
-### Metrics
+## Extending the Monitoring
 
-The application provides the following metrics:
+To add new metrics:
 
-- **Rule Execution Time**: Time taken to execute rules
-- **Rule Hit/Miss Rate**: How often rules are triggered
-- **Error Rate**: Rate of rule execution errors
-- **System Metrics**: JVM memory, CPU usage, etc.
+1. Add new counters, gauges, or timers in the `RuleEngineMetrics` class
+2. Register them with the MeterRegistry
+3. Update the Grafana dashboard to include the new metrics
 
-Access metrics information at: http://localhost:8080/actuator/metrics
+To add new alerts:
 
-### Custom Endpoints
+1. Define new alert rules in `alert_rules.yml`
+2. Restart Prometheus to load the new rules
 
-The application provides a custom Actuator endpoint for rule metrics:
+## Conclusion
 
-- **Rules Endpoint**: http://localhost:8080/actuator/rules
-  - GET /actuator/rules - Get overall rule metrics
-  - GET /actuator/rules/{ruleName} - Get metrics for a specific rule
-  - GET /actuator/rules/status - Get rule engine status
-  - POST /actuator/rules/reload - Reload rules
-  - DELETE /actuator/rules - Reset rule metrics
-
-## Alerting
-
-Prometheus is configured with alert rules for:
-
-- High rule execution time
-- High error rate
-- Low rule hit rate
-- Rule engine down
-- Decision table validation failures
-- High JVM memory usage
-
-To set up alerting with AlertManager:
-
-1. Add AlertManager configuration to the Prometheus configuration
-2. Configure notification channels (email, Slack, etc.)
-
-## Dashboard Overview
-
-The Grafana dashboard provides the following panels:
-
-### Rule Engine Health
-- Drools Rule Engine Status
-- Decision Table Status
-
-### Rule Execution Metrics
-- Rule Execution Time
-- Max Rule Execution Time
-- Rule Hit Distribution
-- Overall Rule Hit Rate
-
-### Error Metrics
-- Rule Error Rate
-- Overall Error Rate
-
-### System Metrics
-- JVM Memory Usage
-- CPU Usage
-- HTTP Request Rate
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Prometheus can't scrape metrics**:
-   - Ensure the application is running
-   - Check that the `/actuator/prometheus` endpoint is accessible
-   - Verify the Prometheus configuration has the correct target URL
-
-2. **Grafana can't connect to Prometheus**:
-   - Check the Prometheus data source configuration in Grafana
-   - Ensure Prometheus is running and accessible
-
-3. **Metrics not showing in Grafana**:
-   - Verify that the application is generating metrics
-   - Check the metric names in the Grafana dashboard match those exposed by the application
-   - Ensure the time range in Grafana is appropriate
-
-## Maintenance
-
-### Backing Up Prometheus Data
-
-```bash
-docker-compose -f docker-compose-prometheus.yml stop prometheus
-tar -cvzf prometheus-backup.tar.gz prometheus/data
-docker-compose -f docker-compose-prometheus.yml start prometheus
-```
-
-### Backing Up Grafana Data
-
-```bash
-docker-compose -f docker-compose-grafana.yml stop grafana
-tar -cvzf grafana-backup.tar.gz grafana/data
-docker-compose -f docker-compose-grafana.yml start grafana
-```
-
-## References
-
-- [Spring Boot Actuator Documentation](https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html)
-- [Prometheus Documentation](https://prometheus.io/docs/introduction/overview/)
-- [Grafana Documentation](https://grafana.com/docs/grafana/latest/)
+This monitoring setup provides comprehensive visibility into the performance of the Spring Drools Integration application, with a focus on rule engine performance. By monitoring the KPIs and responding to alerts, you can ensure optimal performance and reliability of the rule engine.

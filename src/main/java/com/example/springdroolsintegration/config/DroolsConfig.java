@@ -1,5 +1,6 @@
 package com.example.springdroolsintegration.config;
 
+import com.example.springdroolsintegration.service.RuleCompilationCacheService;
 import org.drools.decisiontable.DecisionTableProviderImpl;
 import org.kie.api.KieBase;
 import org.kie.api.KieBaseConfiguration;
@@ -8,6 +9,7 @@ import org.kie.api.builder.KieBuilder;
 import org.kie.api.builder.KieFileSystem;
 import org.kie.api.builder.KieRepository;
 import org.kie.api.builder.Message;
+import org.kie.api.builder.Results;
 import org.kie.api.conf.EventProcessingOption;
 import org.kie.api.io.Resource;
 import org.kie.api.runtime.KieContainer;
@@ -26,7 +28,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -41,6 +45,7 @@ public class DroolsConfig {
     private final DroolsProperties droolsProperties;
     private final ResourceLoader resourceLoader;
     private final KieServices kieServices;
+    private final RuleCompilationCacheService cacheService;
     
     /**
      * Constructor for DroolsConfig.
@@ -48,14 +53,17 @@ public class DroolsConfig {
      *
      * @param droolsProperties Configuration properties for Drools
      * @param resourceLoader Spring ResourceLoader for loading rule files
+     * @param cacheService Service for caching compiled rules
      */
-    public DroolsConfig(DroolsProperties droolsProperties, ResourceLoader resourceLoader) {
+    public DroolsConfig(DroolsProperties droolsProperties, ResourceLoader resourceLoader, 
+                        RuleCompilationCacheService cacheService) {
         this.droolsProperties = droolsProperties;
         this.resourceLoader = resourceLoader;
+        this.cacheService = cacheService;
         this.kieServices = KieServices.Factory.get();
         
-        logger.info("Initializing Drools configuration with properties: rulePath={}, decisionTablePath={}",
-                droolsProperties.getRulePath(), droolsProperties.getDecisionTablePath());
+        logger.info("Initializing Drools configuration with properties: rulePath={}, decisionTablePath={}, cacheEnabled={}",
+                droolsProperties.getRulePath(), droolsProperties.getDecisionTablePath(), droolsProperties.isCacheEnabled());
     }
     
     /**
@@ -104,66 +112,123 @@ public class DroolsConfig {
     
     /**
      * Creates a KieBuilder bean that compiles the rules in the KieFileSystem.
+     * Uses caching to avoid unnecessary recompilation if rules haven't changed.
      *
      * @param kieFileSystem The KieFileSystem containing rule resources
      * @return KieBuilder with compiled rules
      */
     @Bean
     public KieBuilder kieBuilder(KieFileSystem kieFileSystem) {
+        // Generate a cache key based on the KieFileSystem content
+        // For simplicity, we use the hashCode of the KieFileSystem
+        // In a production environment, you might want to use a more robust key generation
+        String cacheKey = "kieBuilder-" + kieFileSystem.toString().hashCode();
+        
+        // Check if a cached KieBuilder exists
+        KieBuilder cachedKieBuilder = cacheService.getCachedKieBuilder(kieFileSystem, cacheKey);
+        if (cachedKieBuilder != null) {
+            logger.info("Using cached KieBuilder for key: {}", cacheKey);
+            return cachedKieBuilder;
+        }
+        
+        // If no cached KieBuilder exists, compile the rules
+        logger.info("No cached KieBuilder found, compiling rules");
         KieBuilder kieBuilder = kieServices.newKieBuilder(kieFileSystem);
         kieBuilder.buildAll();
         
         // Check for errors in rule compilation
-        if (kieBuilder.getResults().hasMessages(Message.Level.ERROR)) {
-            logger.error("Rule compilation errors: {}", kieBuilder.getResults().getMessages());
-            throw new RuntimeException("Rule compilation error: " + kieBuilder.getResults().getMessages());
+        Results results = kieBuilder.getResults();
+        if (results.hasMessages(Message.Level.ERROR)) {
+            logger.error("Rule compilation errors: {}", results.getMessages());
+            throw new RuntimeException("Rule compilation error: " + results.getMessages());
         }
         
-        logger.info("Rules compiled successfully");
+        // Cache the KieBuilder
+        cacheService.cacheKieBuilder(kieFileSystem, cacheKey, kieBuilder, results);
+        
+        logger.info("Rules compiled successfully and cached with key: {}", cacheKey);
         return kieBuilder;
     }
     
     /**
      * Creates a KieContainer bean that holds the compiled rules.
+     * Uses caching to avoid unnecessary container creation if rules haven't changed.
      *
      * @param kieBuilder The KieBuilder with compiled rules
      * @return KieContainer with the compiled rules
      */
     @Bean
     public KieContainer kieContainer(KieBuilder kieBuilder) {
+        // Generate a cache key based on the KieBuilder
+        // For simplicity, we use the hashCode of the KieBuilder
+        String cacheKey = "kieContainer-" + kieBuilder.toString().hashCode();
+        
+        // Check if a cached KieContainer exists
+        KieContainer cachedKieContainer = cacheService.getCachedKieContainer(kieBuilder, cacheKey);
+        if (cachedKieContainer != null) {
+            logger.info("Using cached KieContainer for key: {}", cacheKey);
+            return cachedKieContainer;
+        }
+        
+        // If no cached KieContainer exists, create a new one
+        logger.info("No cached KieContainer found, creating new container");
         KieRepository kieRepository = kieServices.getRepository();
         KieContainer kieContainer = kieServices.newKieContainer(kieRepository.getDefaultReleaseId());
         
-        logger.info("KieContainer created with default release ID: {}", kieRepository.getDefaultReleaseId());
+        // Cache the KieContainer
+        cacheService.cacheKieContainer(kieBuilder, cacheKey, kieContainer);
+        
+        logger.info("KieContainer created with default release ID: {} and cached with key: {}", 
+                kieRepository.getDefaultReleaseId(), cacheKey);
         return kieContainer;
     }
     
     /**
      * Creates a KieBase bean from the KieContainer.
      * This method configures the KieBase with the specified rule packages.
+     * Uses caching to avoid unnecessary KieBase creation if rules haven't changed.
      *
      * @param kieContainer The KieContainer with compiled rules
      * @return KieBase for rule execution
      */
     @Bean
     public KieBase kieBase(KieContainer kieContainer) {
-        // If no rule packages are specified, use the default KieBase
-        if (droolsProperties.getRulePackages() == null || droolsProperties.getRulePackages().isEmpty()) {
-            logger.info("Using default KieBase: {}", droolsProperties.getKieBaseName());
-            return kieContainer.getKieBase(droolsProperties.getKieBaseName());
+        String kieBaseName = droolsProperties.getKieBaseName();
+        
+        // Generate a cache key based on the KieContainer and KieBase name
+        String cacheKey = "kieBase-" + kieContainer.toString().hashCode() + "-" + kieBaseName;
+        
+        // Check if a cached KieBase exists
+        KieBase cachedKieBase = cacheService.getCachedKieBase(kieContainer, kieBaseName, cacheKey);
+        if (cachedKieBase != null) {
+            logger.info("Using cached KieBase for key: {}", cacheKey);
+            return cachedKieBase;
         }
         
-        // Create a KieBase configuration
-        KieBaseConfiguration kieBaseConfiguration = kieServices.newKieBaseConfiguration();
+        logger.info("No cached KieBase found, creating new KieBase");
+        KieBase kieBase;
         
-        // Set event processing mode (STREAM or CLOUD)
-        kieBaseConfiguration.setOption(EventProcessingOption.CLOUD);
+        // If no rule packages are specified, use the default KieBase
+        if (droolsProperties.getRulePackages() == null || droolsProperties.getRulePackages().isEmpty()) {
+            logger.info("Using default KieBase: {}", kieBaseName);
+            kieBase = kieContainer.getKieBase(kieBaseName);
+        } else {
+            // Create a KieBase configuration
+            KieBaseConfiguration kieBaseConfiguration = kieServices.newKieBaseConfiguration();
+            
+            // Set event processing mode (STREAM or CLOUD)
+            kieBaseConfiguration.setOption(EventProcessingOption.CLOUD);
+            
+            // Create a KieBase with the specified packages
+            kieBase = kieContainer.newKieBase(kieBaseName, kieBaseConfiguration);
+            
+            // Log the packages included in the KieBase
+            logger.info("Created KieBase with packages: {}", droolsProperties.getRulePackages());
+        }
         
-        // Create a KieBase with the specified packages
-        KieBase kieBase = kieContainer.newKieBase(droolsProperties.getKieBaseName(), kieBaseConfiguration);
-        
-        // Log the packages included in the KieBase
-        logger.info("Created KieBase with packages: {}", droolsProperties.getRulePackages());
+        // Cache the KieBase
+        cacheService.cacheKieBase(kieContainer, kieBaseName, cacheKey, kieBase);
+        logger.info("KieBase cached with key: {}", cacheKey);
         
         return kieBase;
     }
@@ -284,6 +349,14 @@ public class DroolsConfig {
                 if (hasSupportedExtension) {
                     logger.info("Loading external rule file: {}", fileName);
                     
+                    // Check if the resource has changed and evict from cache if needed
+                    String resourceId = fileName;
+                    Resource droolsResource = ResourceFactory.newFileResource(filePath.toFile());
+                    if (cacheService.hasResourceChanged(droolsResource, resourceId)) {
+                        logger.info("Resource has changed, evicting from cache: {}", resourceId);
+                        cacheService.evictResource(resourceId);
+                    }
+                    
                     // Handle different file types
                     if (fileName.endsWith(".drl")) {
                         // Load DRL file
@@ -293,7 +366,6 @@ public class DroolsConfig {
                     } else if (fileName.endsWith(".xls") || fileName.endsWith(".xlsx")) {
                         // Load decision table
                         DecisionTableProviderImpl decisionTableProvider = new DecisionTableProviderImpl();
-                        Resource droolsResource = ResourceFactory.newFileResource(filePath.toFile());
                         String drl = decisionTableProvider.loadFromResource(droolsResource, null);
                         
                         // Write the generated DRL to KieFileSystem
@@ -308,6 +380,46 @@ public class DroolsConfig {
         } catch (IOException e) {
             logger.error("Error loading external rule files", e);
             throw new RuntimeException("Error loading external rule files", e);
+        }
+    }
+    
+    /**
+     * Evicts all resources from the cache.
+     * This method can be called to force a reload of all rules.
+     */
+    public void evictAllRulesFromCache() {
+        if (droolsProperties.isCacheEnabled()) {
+            logger.info("Evicting all rules from cache");
+            cacheService.evictAllResources();
+        }
+    }
+    
+    /**
+     * Evicts a specific resource from the cache.
+     * This method can be called when a specific rule file is updated.
+     *
+     * @param resourceId The ID of the resource to evict
+     */
+    public void evictResourceFromCache(String resourceId) {
+        if (droolsProperties.isCacheEnabled()) {
+            logger.info("Evicting resource from cache: {}", resourceId);
+            cacheService.evictResource(resourceId);
+        }
+    }
+    
+    /**
+     * Gets cache statistics.
+     * This method can be used for monitoring and debugging.
+     *
+     * @return A map of cache statistics
+     */
+    public Map<String, Object> getCacheStatistics() {
+        if (droolsProperties.isCacheEnabled()) {
+            return cacheService.getCacheStatistics();
+        } else {
+            Map<String, Object> stats = new HashMap<>();
+            stats.put("enabled", false);
+            return stats;
         }
     }
 }
