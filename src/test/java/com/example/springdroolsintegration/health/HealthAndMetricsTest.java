@@ -135,7 +135,7 @@ public class HealthAndMetricsTest {
         meterRegistry.counter("drools.rule.execution.count", "ruleName", "testRule").increment();
 
         // Test the custom endpoint directly
-        Map<String, Object> metrics = ruleMetricsEndpoint.getRuleMetrics();
+        Map<String, Object> metrics = ruleMetricsEndpoint.getMetrics();
         assertNotNull(metrics, "Rule metrics should not be null");
         assertTrue(metrics.containsKey("rules") || metrics.containsKey("totalExecutions"), 
                 "Rule metrics should contain rules or totalExecutions");

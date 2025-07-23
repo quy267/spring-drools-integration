@@ -3,6 +3,8 @@ package com.example.springdroolsintegration.service;
 import com.example.springdroolsintegration.config.DroolsProperties;
 import com.example.springdroolsintegration.config.RuleHotReloadService;
 import com.example.springdroolsintegration.service.impl.RuleManagementServiceImpl;
+import com.example.springdroolsintegration.util.FileValidator;
+import com.example.springdroolsintegration.util.SecureFileStorage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -54,6 +56,12 @@ public class RuleManagementServiceImplTest {
     private RuleAuditService ruleAuditService;
 
     @Mock
+    private FileValidator fileValidator;
+
+    @Mock
+    private SecureFileStorage secureFileStorage;
+
+    @Mock
     private KieServices kieServices;
 
     @Mock
@@ -80,7 +88,9 @@ public class RuleManagementServiceImplTest {
                 kieContainer,
                 kieBase,
                 ruleHotReloadService,
-                ruleAuditService
+                ruleAuditService,
+                fileValidator,
+                secureFileStorage
         );
 
         // Set up the KieServices field using reflection
@@ -126,7 +136,9 @@ public class RuleManagementServiceImplTest {
                 kieContainer,
                 kieBase,
                 ruleHotReloadService,
-                ruleAuditService
+                ruleAuditService,
+                fileValidator,
+                secureFileStorage
         );
 
         // Set up the KieServices field using reflection
@@ -178,7 +190,9 @@ public class RuleManagementServiceImplTest {
                 kieContainer,
                 kieBase,
                 ruleHotReloadService,
-                ruleAuditService
+                ruleAuditService,
+                fileValidator,
+                secureFileStorage
         );
 
         // Set up the KieServices field using reflection
@@ -210,7 +224,9 @@ public class RuleManagementServiceImplTest {
                 kieContainer,
                 kieBase,
                 ruleHotReloadService,
-                ruleAuditService
+                ruleAuditService,
+                fileValidator,
+                secureFileStorage
         );
 
         // Set up the KieServices field using reflection

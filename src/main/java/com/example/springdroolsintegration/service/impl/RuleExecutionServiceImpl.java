@@ -45,6 +45,10 @@ public class RuleExecutionServiceImpl implements RuleExecutionService {
     private final KieSessionPoolService sessionPoolService;
     private final com.example.springdroolsintegration.actuator.RuleEngineMetrics metrics;
     
+    // Statistics tracking
+    private final AtomicLong totalExecutions = new AtomicLong(0);
+    private final AtomicLong totalBatchExecutions = new AtomicLong(0);
+    
     /**
      * Constructor for RuleExecutionServiceImpl.
      * Uses constructor injection for dependencies as per Spring Boot best practices.
@@ -112,6 +116,7 @@ public class RuleExecutionServiceImpl implements RuleExecutionService {
             
             // Mark as successful
             successful = true;
+            totalExecutions.incrementAndGet();
             return fact;
         } catch (Exception e) {
             logger.error("Error executing rules for fact type: {}, execution ID: {}", factType, executionId, e);
@@ -164,6 +169,7 @@ public class RuleExecutionServiceImpl implements RuleExecutionService {
             
             // Mark as successful
             successful = true;
+            totalBatchExecutions.incrementAndGet();
             return facts;
         } catch (Exception e) {
             logger.error("Error executing batch rules for fact type: {}, execution ID: {}", factType, executionId, e);
@@ -301,6 +307,7 @@ public class RuleExecutionServiceImpl implements RuleExecutionService {
             
             // Mark as successful
             successful = true;
+            totalBatchExecutions.incrementAndGet();
             return facts;
         } catch (Exception e) {
             logger.error("Error executing chunked batch rules for fact type: {}, execution ID: {}", 
@@ -328,6 +335,12 @@ public class RuleExecutionServiceImpl implements RuleExecutionService {
     @Override
     public Map<String, Object> getExecutionStatistics() {
         Map<String, Object> statistics = new HashMap<>();
+        
+        // Add rule execution statistics (required by health indicator)
+        statistics.put("totalExecutions", totalExecutions.get());
+        statistics.put("totalBatchExecutions", totalBatchExecutions.get());
+        statistics.put("sessionsCreated", sessionPoolService.getTotalSessionsCreated());
+        statistics.put("sessionsDisposed", sessionPoolService.getTotalSessionsCreated() - sessionPoolService.getPoolSize());
         
         // Add memory usage statistics
         MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
