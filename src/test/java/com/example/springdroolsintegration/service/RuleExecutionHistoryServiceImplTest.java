@@ -228,7 +228,7 @@ public class RuleExecutionHistoryServiceImplTest {
     @Test
     void testGetExecutionStatistics() {
         // Arrange
-        long totalExecutions = 100;
+        long totalExecutions = 3; // Updated to match actual data size
         List<RuleExecution> successfulExecutions = Arrays.asList(
                 RuleExecution.builder().build(),
                 RuleExecution.builder().build()
@@ -262,7 +262,7 @@ public class RuleExecutionHistoryServiceImplTest {
         assertEquals(totalExecutions, result.get("totalExecutions"));
         assertEquals(2L, result.get("successfulExecutions"));
         assertEquals(1L, result.get("failedExecutions"));
-        assertEquals(66.66666666666666, result.get("successRate"));
+        assertEquals(66.66666666666666, result.get("successRate")); // 2/3 * 100 = 66.67%
         assertEquals(200.0, result.get("averageExecutionTimeMs"));
         
         @SuppressWarnings("unchecked")

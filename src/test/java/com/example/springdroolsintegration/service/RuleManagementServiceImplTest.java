@@ -14,17 +14,15 @@ import org.kie.api.builder.KieBuilder;
 import org.kie.api.builder.KieFileSystem;
 import org.kie.api.builder.Message;
 import org.kie.api.builder.Results;
+import org.kie.api.builder.KieRepository;
+import org.kie.api.builder.ReleaseId;
 import org.kie.api.runtime.KieContainer;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Map;
@@ -32,6 +30,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.lenient;
 
 /**
  * Tests for the RuleManagementServiceImpl.
@@ -73,16 +72,16 @@ public class RuleManagementServiceImplTest {
     @Mock
     private Results results;
 
+    @Mock
+    private KieRepository kieRepository;
+
+    @Mock
+    private ReleaseId releaseId;
+
     @TempDir
     Path tempDir;
 
-    /**
-     * Test that the reloadRules method successfully reloads rules.
-     */
-    @Test
-    @DisplayName("Test successful rule reload")
-    public void testSuccessfulRuleReload() throws IOException {
-        // Create the service instance
+    private RuleManagementServiceImpl createService() {
         RuleManagementServiceImpl service = new RuleManagementServiceImpl(
                 droolsProperties,
                 kieContainer,
@@ -92,35 +91,45 @@ public class RuleManagementServiceImplTest {
                 fileValidator,
                 secureFileStorage
         );
-
+        
         // Set up the KieServices field using reflection
         ReflectionTestUtils.setField(service, "kieServices", kieServices);
+        return service;
+    }
 
-        // Set up the mocks
+    private void setupBasicMocks() {
+        lenient().when(droolsProperties.getRulePath()).thenReturn("classpath:rules/");
+        lenient().when(droolsProperties.getDecisionTablePath()).thenReturn("classpath:rules/decision-tables/");
+        lenient().when(droolsProperties.getFileExtensions()).thenReturn(".drl,.xls,.xlsx");
+        lenient().when(droolsProperties.getRuleFiles()).thenReturn(Arrays.asList("rule1.drl", "rule2.drl"));
+        lenient().when(droolsProperties.getDecisionTableFiles()).thenReturn(Arrays.asList("table1.xls", "table2.xlsx"));
+    }
+
+    /**
+     * Test that the reloadRules method successfully reloads rules.
+     */
+    @Test
+    @DisplayName("Test successful rule reload")
+    public void testSuccessfulRuleReload() throws IOException {
+        // Setup
+        RuleManagementServiceImpl service = createService();
+        setupBasicMocks();
+        
         when(kieServices.newKieFileSystem()).thenReturn(kieFileSystem);
         when(kieServices.newKieBuilder(kieFileSystem)).thenReturn(kieBuilder);
+        when(kieServices.getRepository()).thenReturn(kieRepository);
+        when(kieRepository.getDefaultReleaseId()).thenReturn(releaseId);
         when(kieBuilder.getResults()).thenReturn(results);
         when(results.hasMessages(Message.Level.ERROR)).thenReturn(false);
-
-        // Configure properties
-        when(droolsProperties.getRulePath()).thenReturn("classpath:rules/");
-        when(droolsProperties.getDecisionTablePath()).thenReturn("classpath:rules/decision-tables/");
-        when(droolsProperties.getFileExtensions()).thenReturn(".drl,.xls,.xlsx");
-        when(droolsProperties.getRuleFiles()).thenReturn(Arrays.asList("rule1.drl", "rule2.drl"));
-        when(droolsProperties.getDecisionTableFiles()).thenReturn(Arrays.asList("table1.xls", "table2.xlsx"));
         when(droolsProperties.isHotReload()).thenReturn(true);
 
-        // Execute the method
+        // Execute
         Map<String, Object> result = service.reloadRules();
 
-        // Verify the result
+        // Verify
         assertTrue((Boolean) result.get("success"), "Reload should be successful");
         assertEquals("Rules successfully reloaded", result.get("message"), "Message should indicate success");
-
-        // Verify that the KieContainer was updated
         verify(kieContainer).updateToVersion(any());
-
-        // Verify that the audit service was called
         verify(ruleAuditService).logReloadEvent(eq("system"), eq(true), anyString());
     }
 
@@ -130,51 +139,27 @@ public class RuleManagementServiceImplTest {
     @Test
     @DisplayName("Test rule reload with errors")
     public void testRuleReloadWithErrors() throws IOException {
-        // Create the service instance
-        RuleManagementServiceImpl service = new RuleManagementServiceImpl(
-                droolsProperties,
-                kieContainer,
-                kieBase,
-                ruleHotReloadService,
-                ruleAuditService,
-                fileValidator,
-                secureFileStorage
-        );
-
-        // Set up the KieServices field using reflection
-        ReflectionTestUtils.setField(service, "kieServices", kieServices);
-
-        // Set up the mocks
+        // Setup
+        RuleManagementServiceImpl service = createService();
+        setupBasicMocks();
+        
         when(kieServices.newKieFileSystem()).thenReturn(kieFileSystem);
         when(kieServices.newKieBuilder(kieFileSystem)).thenReturn(kieBuilder);
         when(kieBuilder.getResults()).thenReturn(results);
         when(results.hasMessages(Message.Level.ERROR)).thenReturn(true);
-        // Create a mock Message
+        
         Message mockMessage = mock(Message.class);
         when(mockMessage.getText()).thenReturn("Test error message");
-        when(mockMessage.getLevel()).thenReturn(Message.Level.ERROR);
-        
         when(results.getMessages(Message.Level.ERROR)).thenReturn(Arrays.asList(mockMessage));
 
-        // Configure properties
-        when(droolsProperties.getRulePath()).thenReturn("classpath:rules/");
-        when(droolsProperties.getDecisionTablePath()).thenReturn("classpath:rules/decision-tables/");
-        when(droolsProperties.getFileExtensions()).thenReturn(".drl,.xls,.xlsx");
-        when(droolsProperties.getRuleFiles()).thenReturn(Arrays.asList("rule1.drl", "rule2.drl"));
-        when(droolsProperties.getDecisionTableFiles()).thenReturn(Arrays.asList("table1.xls", "table2.xlsx"));
-
-        // Execute the method
+        // Execute
         Map<String, Object> result = service.reloadRules();
 
-        // Verify the result
+        // Verify
         assertFalse((Boolean) result.get("success"), "Reload should not be successful");
         assertEquals("Rule reload failed", result.get("message"), "Message should indicate failure");
         assertNotNull(result.get("errors"), "Errors should be included in the result");
-
-        // Verify that the KieContainer was not updated
         verify(kieContainer, never()).updateToVersion(any());
-
-        // Verify that the audit service was called
         verify(ruleAuditService).logReloadEvent(eq("system"), eq(false), anyString());
     }
 
@@ -184,31 +169,18 @@ public class RuleManagementServiceImplTest {
     @Test
     @DisplayName("Test rule reload with exception")
     public void testRuleReloadWithException() throws IOException {
-        // Create the service instance
-        RuleManagementServiceImpl service = new RuleManagementServiceImpl(
-                droolsProperties,
-                kieContainer,
-                kieBase,
-                ruleHotReloadService,
-                ruleAuditService,
-                fileValidator,
-                secureFileStorage
-        );
-
-        // Set up the KieServices field using reflection
-        ReflectionTestUtils.setField(service, "kieServices", kieServices);
-
-        // Set up the mocks to throw an exception
+        // Setup
+        RuleManagementServiceImpl service = createService();
+        setupBasicMocks();
+        
         when(kieServices.newKieFileSystem()).thenThrow(new RuntimeException("Test exception"));
 
-        // Execute the method
+        // Execute
         Map<String, Object> result = service.reloadRules();
 
-        // Verify the result
+        // Verify
         assertFalse((Boolean) result.get("success"), "Reload should not be successful");
         assertEquals("Error reloading rules: Test exception", result.get("message"), "Message should indicate exception");
-
-        // Verify that the audit service was called
         verify(ruleAuditService).logReloadEvent(eq("system"), eq(false), anyString());
     }
 
@@ -218,44 +190,24 @@ public class RuleManagementServiceImplTest {
     @Test
     @DisplayName("Test rule reload with hot reload enabled")
     public void testRuleReloadWithHotReloadEnabled() throws IOException {
-        // Create the service instance
-        RuleManagementServiceImpl service = new RuleManagementServiceImpl(
-                droolsProperties,
-                kieContainer,
-                kieBase,
-                ruleHotReloadService,
-                ruleAuditService,
-                fileValidator,
-                secureFileStorage
-        );
-
-        // Set up the KieServices field using reflection
-        ReflectionTestUtils.setField(service, "kieServices", kieServices);
-
-        // Set up the mocks
+        // Setup
+        RuleManagementServiceImpl service = createService();
+        setupBasicMocks();
+        
         when(kieServices.newKieFileSystem()).thenReturn(kieFileSystem);
         when(kieServices.newKieBuilder(kieFileSystem)).thenReturn(kieBuilder);
+        when(kieServices.getRepository()).thenReturn(kieRepository);
+        when(kieRepository.getDefaultReleaseId()).thenReturn(releaseId);
         when(kieBuilder.getResults()).thenReturn(results);
         when(results.hasMessages(Message.Level.ERROR)).thenReturn(false);
-
-        // Configure properties
-        when(droolsProperties.getRulePath()).thenReturn("classpath:rules/");
-        when(droolsProperties.getDecisionTablePath()).thenReturn("classpath:rules/decision-tables/");
-        when(droolsProperties.getFileExtensions()).thenReturn(".drl,.xls,.xlsx");
-        when(droolsProperties.getRuleFiles()).thenReturn(Arrays.asList("rule1.drl", "rule2.drl"));
-        when(droolsProperties.getDecisionTableFiles()).thenReturn(Arrays.asList("table1.xls", "table2.xlsx"));
         when(droolsProperties.isHotReload()).thenReturn(true);
 
-        // Execute the method
+        // Execute
         Map<String, Object> result = service.reloadRules();
 
-        // Verify the result
+        // Verify
         assertTrue((Boolean) result.get("success"), "Reload should be successful");
-
-        // Verify that the KieContainer was updated
         verify(kieContainer).updateToVersion(any());
-
-        // Verify that the hot reload service was notified (indirectly via the KieContainer update)
         verify(droolsProperties).isHotReload();
     }
 }
