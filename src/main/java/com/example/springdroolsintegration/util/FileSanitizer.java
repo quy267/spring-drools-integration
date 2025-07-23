@@ -92,22 +92,27 @@ public class FileSanitizer {
             return basePath;
         }
         
-        // Remove any path traversal sequences
-        String sanitized = relativePath
-                .replaceAll("\\.\\./", "")
-                .replaceAll("\\.\\.\\\\", "")
-                .replaceAll("\\\\", "/")
-                .replaceAll("\\.\\.", "");
+        // Check for path traversal attempts before any processing
+        if (relativePath.contains("..")) {
+            logger.warn("Path traversal attempt detected: {}", relativePath);
+            return null;
+        }
         
-        // Remove any leading or trailing slashes
-        sanitized = sanitized.replaceAll("^/+", "").replaceAll("/+$", "");
+        // Normalize path separators to forward slashes
+        String sanitized = relativePath.replaceAll("\\\\", "/");
+        
+        // Remove any leading slashes
+        sanitized = sanitized.replaceAll("^/+", "");
         
         try {
+            // Create path from sanitized string
+            Path relativePart = Path.of(sanitized);
+            
             // Resolve the path and ensure it's within the base path
-            Path resolvedPath = basePath.resolve(sanitized).normalize();
+            Path resolvedPath = basePath.resolve(relativePart).normalize();
             
             if (!resolvedPath.startsWith(basePath)) {
-                logger.warn("Path traversal attempt detected: {}", relativePath);
+                logger.warn("Path traversal attempt detected after resolution: {}", relativePath);
                 return null;
             }
             
@@ -184,12 +189,27 @@ public class FileSanitizer {
             return false;
         }
         
-        // For XML-based files (like .drl), check for XXE vulnerabilities
-        if (extension.equals("drl")) {
+        // For XML-based files (like Excel files), check for XXE vulnerabilities
+        if (extension.equals("xls") || extension.equals("xlsx")) {
             try {
                 byte[] content = file.getBytes();
                 if (!isSafeXmlContent(content)) {
                     logger.warn("Unsafe XML content detected in file: {}", fileName);
+                    return false;
+                }
+            } catch (IOException e) {
+                logger.error("Error reading file content: {}", e.getMessage(), e);
+                return false;
+            }
+        }
+        
+        // For DRL files, check for basic content safety
+        if (extension.equals("drl")) {
+            try {
+                byte[] content = file.getBytes();
+                String contentStr = new String(content, StandardCharsets.UTF_8);
+                if (!isSafeDrlContent(contentStr)) {
+                    logger.warn("Unsafe DRL content detected in file: {}", fileName);
                     return false;
                 }
             } catch (IOException e) {
@@ -209,5 +229,47 @@ public class FileSanitizer {
      */
     public boolean isAllowedExtension(String extension) {
         return extension != null && ALLOWED_EXTENSIONS.contains(extension.toLowerCase());
+    }
+    
+    /**
+     * Checks if DRL content is safe and doesn't contain malicious patterns.
+     * 
+     * @param content The DRL content to check
+     * @return true if the content is safe, false otherwise
+     */
+    private boolean isSafeDrlContent(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return false;
+        }
+        
+        // Check for XML/XXE injection attempts in DRL files
+        if (MALICIOUS_XML_PATTERN.matcher(content).find()) {
+            logger.warn("XML injection attempt detected in DRL content");
+            return false;
+        }
+        
+        // Check for potentially malicious patterns in DRL content
+        // Avoid system calls, file operations, or other dangerous operations
+        String[] dangerousPatterns = {
+            "System.exec",
+            "Runtime.getRuntime",
+            "ProcessBuilder",
+            "java.io.File",
+            "java.nio.file",
+            "Class.forName",
+            "System.setProperty",
+            "System.getProperty",
+            "System.exit"
+        };
+        
+        String lowerContent = content.toLowerCase();
+        for (String pattern : dangerousPatterns) {
+            if (lowerContent.contains(pattern.toLowerCase())) {
+                logger.warn("Dangerous pattern found in DRL content: {}", pattern);
+                return false;
+            }
+        }
+        
+        return true;
     }
 }

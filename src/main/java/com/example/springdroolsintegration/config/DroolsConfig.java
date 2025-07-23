@@ -256,7 +256,21 @@ public class DroolsConfig {
                 
                 for (org.springframework.core.io.Resource resource : resources) {
                     logger.info("Loading DRL file: {}", resource.getFilename());
-                    kieFileSystem.write(ResourceFactory.newClassPathResource(resource.getFilename()));
+                    String resourcePath = resource.getURI().toString();
+                    if (resourcePath.contains("!")) {
+                        // Handle JAR resources
+                        String path = resourcePath.substring(resourcePath.indexOf("!") + 2);
+                        kieFileSystem.write(ResourceFactory.newClassPathResource(path));
+                    } else {
+                        // Handle file system resources
+                        String path = resourcePath.replace("file:", "");
+                        if (path.contains("classes/")) {
+                            path = path.substring(path.indexOf("classes/") + 8);
+                            kieFileSystem.write(ResourceFactory.newClassPathResource(path));
+                        } else {
+                            kieFileSystem.write(ResourceFactory.newFileResource(path));
+                        }
+                    }
                 }
             }
         }
@@ -288,8 +302,23 @@ public class DroolsConfig {
                     DecisionTableProviderImpl decisionTableProvider = new DecisionTableProviderImpl();
                     
                     // Convert decision table to DRL
-                    Resource droolsResource = ResourceFactory.newClassPathResource(
-                            droolsProperties.getDecisionTablePath().replaceFirst("classpath:", "") + resource.getFilename());
+                    String resourcePath = resource.getURI().toString();
+                    Resource droolsResource;
+                    if (resourcePath.contains("!")) {
+                        // Handle JAR resources
+                        String path = resourcePath.substring(resourcePath.indexOf("!") + 2);
+                        droolsResource = ResourceFactory.newClassPathResource(path);
+                    } else {
+                        // Handle file system resources
+                        String path = resourcePath.replace("file:", "");
+                        if (path.contains("classes/")) {
+                            path = path.substring(path.indexOf("classes/") + 8);
+                            droolsResource = ResourceFactory.newClassPathResource(path);
+                        } else {
+                            droolsResource = ResourceFactory.newFileResource(path);
+                        }
+                    }
+                    
                     String drl = decisionTableProvider.loadFromResource(droolsResource, null);
                     
                     // Write the generated DRL to KieFileSystem

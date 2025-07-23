@@ -1,0 +1,148 @@
+package com.example.springdroolsintegration.rules;
+
+import com.example.springdroolsintegration.model.entity.Customer;
+import com.example.springdroolsintegration.model.entity.Order;
+import com.example.springdroolsintegration.model.entity.DiscountRule;
+
+// Premium Customer (Senior with Gold tier) - Highest priority
+rule "Premium Customer Discount"
+    salience 100
+    when
+        $customer: Customer(age > 60, loyaltyTier == "GOLD")
+        $order: Order()
+        $discountRule: DiscountRule()
+    then
+        $discountRule.setDiscountPercentage(20.0);
+        $discountRule.setName("Premium Customer Discount");
+        System.out.println("[DEBUG_LOG] Applied Premium Customer Discount: 20%");
+end
+
+// Gold Tier Discount
+rule "Gold Tier Discount"
+    salience 90
+    when
+        $customer: Customer(loyaltyTier == "GOLD")
+        $order: Order()
+        $discountRule: DiscountRule()
+    then
+        $discountRule.setDiscountPercentage(15.0);
+        $discountRule.setName("Gold Tier Discount");
+        System.out.println("[DEBUG_LOG] Applied Gold Tier Discount: 15%");
+end
+
+// Senior Discount
+rule "Senior Discount"
+    salience 85
+    when
+        $customer: Customer(age > 60)
+        $order: Order()
+        $discountRule: DiscountRule()
+    then
+        $discountRule.setDiscountPercentage(10.0);
+        $discountRule.setName("Senior Discount");
+        System.out.println("[DEBUG_LOG] Applied Senior Discount: 10%");
+end
+
+// Silver Tier Discount
+rule "Silver Tier Discount"
+    salience 80
+    when
+        $customer: Customer(loyaltyTier == "SILVER")
+        $order: Order()
+        $discountRule: DiscountRule()
+    then
+        $discountRule.setDiscountPercentage(10.0);
+        $discountRule.setName("Silver Tier Discount");
+        System.out.println("[DEBUG_LOG] Applied Silver Tier Discount: 10%");
+end
+
+// Bronze Tier Discount
+rule "Bronze Tier Discount"
+    salience 75
+    when
+        $customer: Customer(loyaltyTier == "BRONZE")
+        $order: Order()
+        $discountRule: DiscountRule()
+    then
+        $discountRule.setDiscountPercentage(5.0);
+        $discountRule.setName("Bronze Tier Discount");
+        System.out.println("[DEBUG_LOG] Applied Bronze Tier Discount: 5%");
+end
+
+// Large Order Discount
+rule "Large Order Discount"
+    salience 70
+    when
+        $customer: Customer()
+        $order: Order(amount >= 200.0)
+        $discountRule: DiscountRule()
+    then
+        $discountRule.setDiscountPercentage(5.0);
+        $discountRule.setName("Large Order Discount");
+        System.out.println("[DEBUG_LOG] Applied Large Order Discount: 5%");
+end
+
+// Bulk Order Discount
+rule "Bulk Order Discount"
+    salience 65
+    when
+        $customer: Customer()
+        $order: Order(volume >= 20)
+        $discountRule: DiscountRule()
+    then
+        $discountRule.setDiscountPercentage(8.0);
+        $discountRule.setName("Bulk Order Discount");
+        System.out.println("[DEBUG_LOG] Applied Bulk Order Discount: 8%");
+end
+
+// Student Discount
+rule "Student Discount"
+    salience 60
+    when
+        $customer: Customer(age >= 18, age <= 25)
+        $order: Order()
+        $discountRule: DiscountRule()
+    then
+        $discountRule.setDiscountPercentage(5.0);
+        $discountRule.setName("Student Discount");
+        System.out.println("[DEBUG_LOG] Applied Student Discount: 5%");
+end
+
+// Child Discount
+rule "Child Discount"
+    salience 55
+    when
+        $customer: Customer(age < 18)
+        $order: Order()
+        $discountRule: DiscountRule()
+    then
+        $discountRule.setDiscountPercentage(5.0);
+        $discountRule.setName("Child Discount");
+        System.out.println("[DEBUG_LOG] Applied Child Discount: 5%");
+end
+
+// Medium Order Discount
+rule "Medium Order Discount"
+    salience 50
+    when
+        $customer: Customer()
+        $order: Order(amount >= 100.0, amount < 200.0)
+        $discountRule: DiscountRule()
+    then
+        $discountRule.setDiscountPercentage(3.0);
+        $discountRule.setName("Medium Order Discount");
+        System.out.println("[DEBUG_LOG] Applied Medium Order Discount: 3%");
+end
+
+// Medium Quantity Discount
+rule "Medium Quantity Discount"
+    salience 45
+    when
+        $customer: Customer()
+        $order: Order(volume >= 10, volume < 20)
+        $discountRule: DiscountRule()
+    then
+        $discountRule.setDiscountPercentage(5.0);
+        $discountRule.setName("Medium Quantity Discount");
+        System.out.println("[DEBUG_LOG] Applied Medium Quantity Discount: 5%");
+end
