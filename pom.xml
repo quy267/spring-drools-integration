@@ -216,6 +216,16 @@
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>0.8.10</version>
+                <configuration>
+                    <excludes>
+                        <!-- Exclude Drools internal classes that cause instrumentation issues -->
+                        <exclude>org/drools/drl/parser/lang/*</exclude>
+                        <exclude>org/drools/compiler/**/*</exclude>
+                        <exclude>org/kie/**/*</exclude>
+                        <!-- Exclude MapStruct generated classes -->
+                        <exclude>**/*MapperImpl.class</exclude>
+                    </excludes>
+                </configuration>
                 <executions>
                     <execution>
                         <id>prepare-agent</id>
