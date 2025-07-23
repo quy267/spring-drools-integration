@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
@@ -56,7 +57,7 @@ public class DroolsConfig {
      * @param cacheService Service for caching compiled rules
      */
     public DroolsConfig(DroolsProperties droolsProperties, ResourceLoader resourceLoader, 
-                        RuleCompilationCacheService cacheService) {
+                        @Lazy RuleCompilationCacheService cacheService) {
         this.droolsProperties = droolsProperties;
         this.resourceLoader = resourceLoader;
         this.cacheService = cacheService;
@@ -450,5 +451,43 @@ public class DroolsConfig {
             stats.put("enabled", false);
             return stats;
         }
+    }
+    
+    /**
+     * Creates a KieSession bean from the KieBase.
+     * This method creates a stateful KieSession for rule execution.
+     *
+     * @param kieBase The KieBase containing compiled rules
+     * @return KieSession for stateful rule execution
+     */
+    @Bean
+    public org.kie.api.runtime.KieSession kieSession(KieBase kieBase) {
+        String kieSessionName = droolsProperties.getKieSessionName();
+        logger.info("Creating KieSession: {}", kieSessionName);
+        
+        if (droolsProperties.isStatelessSession()) {
+            logger.warn("Stateless session requested but creating stateful KieSession bean. Use kieStatelessSession() for stateless execution.");
+        }
+        
+        org.kie.api.runtime.KieSession kieSession = kieBase.newKieSession();
+        logger.info("KieSession created successfully: {}", kieSessionName);
+        return kieSession;
+    }
+    
+    /**
+     * Creates a StatelessKieSession bean from the KieBase.
+     * This method creates a stateless KieSession for rule execution.
+     *
+     * @param kieBase The KieBase containing compiled rules
+     * @return StatelessKieSession for stateless rule execution
+     */
+    @Bean
+    public org.kie.api.runtime.StatelessKieSession kieStatelessSession(KieBase kieBase) {
+        String kieSessionName = droolsProperties.getKieSessionName();
+        logger.info("Creating StatelessKieSession: {}", kieSessionName);
+        
+        org.kie.api.runtime.StatelessKieSession statelessKieSession = kieBase.newStatelessKieSession();
+        logger.info("StatelessKieSession created successfully: {}", kieSessionName);
+        return statelessKieSession;
     }
 }
