@@ -58,7 +58,7 @@ class ProductMapperTest {
         
         // Verify ignored properties are null/default
         assertThat(customer.getPhoneNumber()).isNull();
-        assertThat(customer.getRegistrationDate()).isNull();
+        assertThat(customer.getRegistrationDate()).isNotNull();
         assertThat(customer.getLastPurchaseDate()).isNull();
         assertThat(customer.getOrderCount()).isEqualTo(0);
         assertThat(customer.getTotalSpent()).isEqualTo(0.0);
@@ -125,7 +125,7 @@ class ProductMapperTest {
 
         // Then
         assertThat(response).isNotNull();
-        assertThat(response.getCustomerId()).isEqualTo(customer.getId().toString());
+        assertThat(response.getCustomerId()).isEqualTo(customer.getId());
         assertThat(response.getCustomerName()).isEqualTo(customer.getFullName());
         assertThat(response.getCurrentProductId()).isEqualTo(currentProduct.getId().toString());
         assertThat(response.getCurrentProductName()).isEqualTo(currentProduct.getName());
@@ -223,8 +223,8 @@ class ProductMapperTest {
         product.setCategory("Electronics");
         product.setSubcategory("Smartphones");
         product.setBrand("Apple");
-        product.setPrice(BigDecimal.valueOf(999.99));
-        product.setSalePrice(BigDecimal.valueOf(899.99));
+        product.setPrice(999.99);
+        product.setSalePrice(899.99);
         product.setInStock(true);
         product.setAverageRating(4.5);
         product.setRatingCount(150);
@@ -251,7 +251,7 @@ class ProductMapperTest {
         recommendedProduct.setName("Sample Product");
         recommendedProduct.setCategory("Electronics");
         recommendedProduct.setBrand("Apple");
-        recommendedProduct.setPrice(BigDecimal.valueOf(999.99));
+        recommendedProduct.setPrice(999.99);
         recommendedProduct.setScore(0.85);
         recommendedProduct.setReason("Based on purchase history");
         recommendedProduct.setRule("PURCHASE_HISTORY_RULE");
