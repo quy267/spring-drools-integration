@@ -55,7 +55,7 @@ The Spring Boot Drools Integration application can be deployed in various enviro
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/spring-drools-integration.git
+git clone https://github.com/quy267/spring-drools-integration.git
 cd spring-drools-integration
 
 # Build the application

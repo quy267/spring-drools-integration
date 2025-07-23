@@ -1,0 +1,82 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Build artifacts
+target/
+build/
+out/
+*.class
+*.jar
+*.war
+
+# Maven files
+.mvn/wrapper/maven-wrapper.jar
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed in container)
+docs/
+README.md
+HELP.md
+*.md
+
+# Test files
+src/test/
+test-*.sh
+
+# Monitoring configuration (will be mounted as volumes)
+monitoring/
+
+# Examples (not needed in container)
+examples/
+
+# Prompts and AI-related files
+prompts/
+
+# Docker files themselves
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Coverage reports
+coverage/
+*.coverage
+
+# Node modules (if any)
+node_modules/
+
+# Python cache (if any)
+__pycache__/
+*.pyc
+*.pyo
+
+# Backup files
+*.bak
+*.backup
+*~

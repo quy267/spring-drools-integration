@@ -32,7 +32,7 @@ Before starting these tutorials, ensure you have:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/spring-drools-integration.git
+git clone https://github.com/quy267/spring-drools-integration.git
 cd spring-drools-integration
 
 # Build the application
