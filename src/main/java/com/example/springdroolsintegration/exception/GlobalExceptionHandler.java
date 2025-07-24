@@ -50,7 +50,7 @@ public class GlobalExceptionHandler {
         
         enrichProblemDetail(problemDetail, ex, correlationId);
         
-        return ResponseEntity.of(problemDetail).build();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problemDetail);
     }
     
     /**
@@ -85,7 +85,7 @@ public class GlobalExceptionHandler {
         
         problemDetail.setProperties(properties);
         
-        return ResponseEntity.of(problemDetail).build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problemDetail);
     }
     
     /**
@@ -120,7 +120,7 @@ public class GlobalExceptionHandler {
         
         problemDetail.setProperties(properties);
         
-        return ResponseEntity.of(problemDetail).build();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problemDetail);
     }
     
     /**
@@ -152,7 +152,7 @@ public class GlobalExceptionHandler {
         
         problemDetail.setProperties(properties);
         
-        return ResponseEntity.of(problemDetail).build();
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(problemDetail);
     }
     
     /**
@@ -189,7 +189,7 @@ public class GlobalExceptionHandler {
         
         problemDetail.setProperties(properties);
         
-        return ResponseEntity.of(problemDetail).build();
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problemDetail);
     }
     
     /**
@@ -221,7 +221,7 @@ public class GlobalExceptionHandler {
         
         problemDetail.setProperties(properties);
         
-        return ResponseEntity.of(problemDetail).build();
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problemDetail);
     }
     
     /**

@@ -79,6 +79,9 @@ public class RuleExecutionController {
                 result = ruleExecutionService.executeRules(request.getFact());
             }
             return ResponseEntity.ok(result);
+        } catch (com.example.springdroolsintegration.exception.RuleExecutionException e) {
+            // Let RuleExecutionException bubble up to GlobalExceptionHandler
+            throw e;
         } catch (Exception e) {
             logger.error("Error executing rules: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
