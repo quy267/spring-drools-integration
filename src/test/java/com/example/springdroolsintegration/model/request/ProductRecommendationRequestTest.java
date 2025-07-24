@@ -194,7 +194,7 @@ class ProductRecommendationRequestTest {
         request.setFirstName("John");
         request.setLastName("Doe");
         request.setEmail("john.doe@example.com");
-        request.setAccountNumber("CUST12"); // Too short
+        request.setAccountNumber("CUST1"); // Too short (only 5 characters, needs 6-10)
 
         // Validate the request
         Set<ConstraintViolation<ProductRecommendationRequest>> violations = validator.validate(request);
