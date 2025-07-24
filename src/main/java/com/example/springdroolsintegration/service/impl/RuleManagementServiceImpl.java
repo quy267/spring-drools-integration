@@ -19,6 +19,7 @@ import org.kie.api.runtime.KieContainer;
 import org.kie.internal.io.ResourceFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -78,7 +79,7 @@ public class RuleManagementServiceImpl implements RuleManagementService {
      * @param droolsProperties Configuration properties for Drools
      * @param kieContainer KieContainer for rule execution
      * @param kieBase KieBase for rule execution
-     * @param ruleHotReloadService Service for hot-reloading rules
+     * @param ruleHotReloadService Service for hot-reloading rules (optional, may be null in test profiles)
      * @param ruleAuditService Service for audit logging
      * @param fileValidator Validator for uploaded files
      * @param secureFileStorage Secure storage for uploaded files
@@ -86,7 +87,7 @@ public class RuleManagementServiceImpl implements RuleManagementService {
     public RuleManagementServiceImpl(DroolsProperties droolsProperties, 
                                     KieContainer kieContainer,
                                     KieBase kieBase,
-                                    RuleHotReloadService ruleHotReloadService,
+                                    @Autowired(required = false) RuleHotReloadService ruleHotReloadService,
                                     RuleAuditService ruleAuditService,
                                     FileValidator fileValidator,
                                     SecureFileStorage secureFileStorage) {

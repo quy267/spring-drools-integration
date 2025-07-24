@@ -1,0 +1,180 @@
+package com.example.springdroolsintegration.rules;
+
+import com.example.springdroolsintegration.model.entity.LoanApplication;
+import com.example.springdroolsintegration.model.entity.Applicant;
+import com.example.springdroolsintegration.model.entity.CreditScore;
+
+// Excellent Credit Large Income
+rule "Excellent Credit Large Income"
+    salience 100
+    when
+        $applicant: Applicant(creditScore > 750, annualIncome > 100000)
+        $loanApplication: LoanApplication(loanAmount < 500000, debtToIncomeRatio < 0.36, applicant.yearsAtEmployer >= 2)
+    then
+        $loanApplication.setApproved(true);
+        $loanApplication.setDecisionReason("Approved - Excellent credit with large income");
+        $loanApplication.setRiskScore(150);
+        $loanApplication.setStatus("APPROVED");
+        $loanApplication.setInterestRate(3.25);
+        System.out.println("[DEBUG_LOG] Applied Excellent Credit Large Income rule");
+end
+
+// Excellent Credit
+rule "Excellent Credit"
+    salience 95
+    when
+        $applicant: Applicant(creditScore > 750, annualIncome > 75000)
+        $loanApplication: LoanApplication(loanAmount < 300000, debtToIncomeRatio < 0.36, applicant.yearsAtEmployer >= 2)
+    then
+        $loanApplication.setApproved(true);
+        $loanApplication.setDecisionReason("Approved - Excellent credit score");
+        $loanApplication.setRiskScore(200);
+        $loanApplication.setStatus("APPROVED");
+        $loanApplication.setInterestRate(3.5);
+        System.out.println("[DEBUG_LOG] Applied Excellent Credit rule");
+end
+
+// Good Credit High Income
+rule "Good Credit High Income"
+    salience 90
+    when
+        $applicant: Applicant(creditScore >= 700 && creditScore <= 750, annualIncome > 80000)
+        $loanApplication: LoanApplication(loanAmount < 300000, debtToIncomeRatio < 0.38, applicant.yearsAtEmployer >= 2)
+    then
+        $loanApplication.setApproved(true);
+        $loanApplication.setDecisionReason("Approved - Good credit with high income");
+        $loanApplication.setRiskScore(250);
+        $loanApplication.setStatus("APPROVED");
+        $loanApplication.setInterestRate(3.75);
+        System.out.println("[DEBUG_LOG] Applied Good Credit High Income rule");
+end
+
+// Good Credit
+rule "Good Credit"
+    salience 85
+    when
+        $applicant: Applicant(creditScore >= 680 && creditScore <= 750, annualIncome > 60000)
+        $loanApplication: LoanApplication(loanAmount < 250000, debtToIncomeRatio < 0.40, applicant.yearsAtEmployer >= 2)
+    then
+        $loanApplication.setApproved(true);
+        $loanApplication.setDecisionReason("Approved - Good credit score and income");
+        $loanApplication.setRiskScore(300);
+        $loanApplication.setStatus("APPROVED");
+        $loanApplication.setInterestRate(4.0);
+        System.out.println("[DEBUG_LOG] Applied Good Credit rule");
+end
+
+// Fair Credit Stable Employment
+rule "Fair Credit Stable Employment"
+    salience 80
+    when
+        $applicant: Applicant(creditScore >= 620 && creditScore <= 680, annualIncome > 60000)
+        $loanApplication: LoanApplication(loanAmount < 200000, debtToIncomeRatio < 0.42, applicant.yearsAtEmployer >= 3)
+    then
+        $loanApplication.setApproved(true);
+        $loanApplication.setDecisionReason("Approved - Fair credit with stable employment");
+        $loanApplication.setRiskScore(400);
+        $loanApplication.setStatus("APPROVED");
+        $loanApplication.setInterestRate(4.25);
+        System.out.println("[DEBUG_LOG] Applied Fair Credit Stable Employment rule");
+end
+
+// Home Loan Special
+rule "Home Loan Special"
+    salience 65
+    when
+        $applicant: Applicant(creditScore > 680, annualIncome > 70000)
+        $loanApplication: LoanApplication(loanAmount < 350000, debtToIncomeRatio < 0.40, applicant.yearsAtEmployer >= 2, 
+                                        loanPurpose == "PURCHASE" || loanPurpose == "HOME")
+    then
+        $loanApplication.setApproved(true);
+        $loanApplication.setDecisionReason("Approved - Home loan special rate");
+        $loanApplication.setRiskScore(250);
+        $loanApplication.setStatus("APPROVED");
+        $loanApplication.setInterestRate(3.85);
+        System.out.println("[DEBUG_LOG] Applied Home Loan Special rule");
+end
+
+// Auto Loan Special
+rule "Auto Loan Special"
+    salience 60
+    when
+        $applicant: Applicant(creditScore > 680, annualIncome > 60000)
+        $loanApplication: LoanApplication(loanAmount < 50000, debtToIncomeRatio < 0.42, applicant.yearsAtEmployer >= 1,
+                                        loanType == "AUTO")
+    then
+        $loanApplication.setApproved(true);
+        $loanApplication.setDecisionReason("Approved - Auto loan special rate");
+        $loanApplication.setRiskScore(200);
+        $loanApplication.setStatus("APPROVED");
+        $loanApplication.setInterestRate(3.9);
+        System.out.println("[DEBUG_LOG] Applied Auto Loan Special rule");
+end
+
+// Poor Credit Rejection
+rule "Poor Credit Rejection"
+    salience 55
+    when
+        $applicant: Applicant(creditScore < 600)
+        $loanApplication: LoanApplication()
+    then
+        $loanApplication.setApproved(false);
+        $loanApplication.setDecisionReason("Rejected - Credit score too low");
+        $loanApplication.setRiskScore(800);
+        $loanApplication.setStatus("REJECTED");
+        System.out.println("[DEBUG_LOG] Applied Poor Credit Rejection rule");
+end
+
+// High Debt Ratio Rejection
+rule "High Debt Ratio Rejection"
+    salience 50
+    when
+        $loanApplication: LoanApplication(debtToIncomeRatio >= 0.43)
+    then
+        $loanApplication.setApproved(false);
+        $loanApplication.setDecisionReason("Rejected - Debt-to-income ratio too high");
+        $loanApplication.setRiskScore(750);
+        $loanApplication.setStatus("REJECTED");
+        System.out.println("[DEBUG_LOG] Applied High Debt Ratio Rejection rule");
+end
+
+// Low Income Rejection
+rule "Low Income Rejection"
+    salience 45
+    when
+        $applicant: Applicant(annualIncome < 30000)
+        $loanApplication: LoanApplication()
+    then
+        $loanApplication.setApproved(false);
+        $loanApplication.setDecisionReason("Rejected - Annual income too low");
+        $loanApplication.setRiskScore(800);
+        $loanApplication.setStatus("REJECTED");
+        System.out.println("[DEBUG_LOG] Applied Low Income Rejection rule");
+end
+
+// Unstable Employment Rejection
+rule "Unstable Employment Rejection"
+    salience 40
+    when
+        $applicant: Applicant(yearsAtEmployer < 1)
+        $loanApplication: LoanApplication()
+    then
+        $loanApplication.setApproved(false);
+        $loanApplication.setDecisionReason("Rejected - Employment history too short");
+        $loanApplication.setRiskScore(700);
+        $loanApplication.setStatus("REJECTED");
+        System.out.println("[DEBUG_LOG] Applied Unstable Employment Rejection rule");
+end
+
+// Default fallback rule - if no other rules match
+rule "Default Decision"
+    salience 1
+    when
+        $loanApplication: LoanApplication(decisionReason == null)
+    then
+        $loanApplication.setApproved(false);
+        $loanApplication.setDecisionReason("Rejected - Does not meet approval criteria");
+        $loanApplication.setRiskScore(600);
+        $loanApplication.setStatus("REJECTED");
+        System.out.println("[DEBUG_LOG] Applied Default Decision rule");
+end
