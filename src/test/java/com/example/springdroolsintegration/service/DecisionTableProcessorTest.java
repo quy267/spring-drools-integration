@@ -198,22 +198,33 @@ class DecisionTableProcessorTest {
         try (Workbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("DiscountRules");
             
-            // Create header row
-            Row headerRow = sheet.createRow(0);
+            // Add RuleTable marker (required by Drools)
+            Row ruleTableRow = sheet.createRow(0);
+            ruleTableRow.createCell(0).setCellValue("RuleTable CustomerDiscountRules");
+            
+            // Create header row with required headers (for DecisionTableProcessor validation)
+            Row headerRow = sheet.createRow(1);
             headerRow.createCell(0).setCellValue("RuleSet");
-            headerRow.createCell(1).setCellValue("RuleId");
-            headerRow.createCell(2).setCellValue("Condition");
-            headerRow.createCell(3).setCellValue("Action");
-            headerRow.createCell(4).setCellValue("Customer Age");
-            headerRow.createCell(5).setCellValue("Loyalty Tier");
-            headerRow.createCell(6).setCellValue("Discount Percentage");
+            headerRow.createCell(1).setCellValue("Condition");
+            headerRow.createCell(2).setCellValue("Action");
+            headerRow.createCell(3).setCellValue("CONDITION");
+            headerRow.createCell(4).setCellValue("CONDITION");
+            headerRow.createCell(5).setCellValue("ACTION");
+            
+            // Create attribute row (Drools format)
+            Row attributeRow = sheet.createRow(2);
+            attributeRow.createCell(3).setCellValue("age");
+            attributeRow.createCell(4).setCellValue("loyaltyTier");
+            attributeRow.createCell(5).setCellValue("discountPercentage");
             
             // Create data row
-            Row dataRow = sheet.createRow(1);
-            dataRow.createCell(0).setCellValue("CustomerDiscountRules");
-            dataRow.createCell(1).setCellValue("Senior Discount");
-            dataRow.createCell(4).setCellValue("> 60");
-            dataRow.createCell(6).setCellValue("10");
+            Row dataRow = sheet.createRow(3);
+            // Leave RuleSet cell (column 0) blank as required by Drools
+            dataRow.createCell(1).setCellValue("Customer Age > 60");
+            dataRow.createCell(2).setCellValue("Set discount to 10%");
+            dataRow.createCell(3).setCellValue("> 60");
+            dataRow.createCell(4).setCellValue("== \"GOLD\"");
+            dataRow.createCell(5).setCellValue("10");
             
             // Write the workbook to a file
             try (FileOutputStream fos = new FileOutputStream(filePath.toFile())) {
@@ -238,40 +249,58 @@ class DecisionTableProcessorTest {
             // Create first sheet
             Sheet sheet1 = workbook.createSheet("DiscountRules");
             
-            // Create header row
-            Row headerRow1 = sheet1.createRow(0);
+            // Add RuleTable marker (required by Drools)
+            Row ruleTableRow1 = sheet1.createRow(0);
+            ruleTableRow1.createCell(0).setCellValue("RuleTable CustomerDiscountRules");
+            
+            // Create header row with required headers (for DecisionTableProcessor validation)
+            Row headerRow1 = sheet1.createRow(1);
             headerRow1.createCell(0).setCellValue("RuleSet");
-            headerRow1.createCell(1).setCellValue("RuleId");
-            headerRow1.createCell(2).setCellValue("Condition");
-            headerRow1.createCell(3).setCellValue("Action");
-            headerRow1.createCell(4).setCellValue("Customer Age");
-            headerRow1.createCell(5).setCellValue("Discount Percentage");
+            headerRow1.createCell(1).setCellValue("Condition");
+            headerRow1.createCell(2).setCellValue("Action");
+            headerRow1.createCell(3).setCellValue("CONDITION");
+            headerRow1.createCell(4).setCellValue("ACTION");
+            
+            // Create attribute row (Drools format)
+            Row attributeRow1 = sheet1.createRow(2);
+            attributeRow1.createCell(3).setCellValue("age");
+            attributeRow1.createCell(4).setCellValue("discountPercentage");
             
             // Create data row
-            Row dataRow1 = sheet1.createRow(1);
-            dataRow1.createCell(0).setCellValue("CustomerDiscountRules");
-            dataRow1.createCell(1).setCellValue("Senior Discount");
-            dataRow1.createCell(4).setCellValue("> 60");
-            dataRow1.createCell(5).setCellValue("10");
+            Row dataRow1 = sheet1.createRow(3);
+            // Leave RuleSet cell (column 0) blank as required by Drools
+            dataRow1.createCell(1).setCellValue("Customer Age > 60");
+            dataRow1.createCell(2).setCellValue("Set discount to 10%");
+            dataRow1.createCell(3).setCellValue("> 60");
+            dataRow1.createCell(4).setCellValue("10");
             
             // Create second sheet
             Sheet sheet2 = workbook.createSheet("LoanRules");
             
-            // Create header row
-            Row headerRow2 = sheet2.createRow(0);
+            // Add RuleTable marker (required by Drools)
+            Row ruleTableRow2 = sheet2.createRow(0);
+            ruleTableRow2.createCell(0).setCellValue("RuleTable LoanApprovalRules");
+            
+            // Create header row with required headers (for DecisionTableProcessor validation)
+            Row headerRow2 = sheet2.createRow(1);
             headerRow2.createCell(0).setCellValue("RuleSet");
-            headerRow2.createCell(1).setCellValue("RuleId");
-            headerRow2.createCell(2).setCellValue("Condition");
-            headerRow2.createCell(3).setCellValue("Action");
-            headerRow2.createCell(4).setCellValue("Credit Score");
-            headerRow2.createCell(5).setCellValue("Approval Status");
+            headerRow2.createCell(1).setCellValue("Condition");
+            headerRow2.createCell(2).setCellValue("Action");
+            headerRow2.createCell(3).setCellValue("CONDITION");
+            headerRow2.createCell(4).setCellValue("ACTION");
+            
+            // Create attribute row (Drools format)
+            Row attributeRow2 = sheet2.createRow(2);
+            attributeRow2.createCell(3).setCellValue("creditScore");
+            attributeRow2.createCell(4).setCellValue("approvalStatus");
             
             // Create data row
-            Row dataRow2 = sheet2.createRow(1);
-            dataRow2.createCell(0).setCellValue("LoanApprovalRules");
-            dataRow2.createCell(1).setCellValue("Good Credit Approval");
-            dataRow2.createCell(4).setCellValue("> 700");
-            dataRow2.createCell(5).setCellValue("\"APPROVED\"");
+            Row dataRow2 = sheet2.createRow(3);
+            // Leave RuleSet cell (column 0) blank as required by Drools
+            dataRow2.createCell(1).setCellValue("Credit Score > 700");
+            dataRow2.createCell(2).setCellValue("Approve loan");
+            dataRow2.createCell(3).setCellValue("> 700");
+            dataRow2.createCell(4).setCellValue("\"APPROVED\"");
             
             // Write the workbook to a file
             try (FileOutputStream fos = new FileOutputStream(filePath.toFile())) {

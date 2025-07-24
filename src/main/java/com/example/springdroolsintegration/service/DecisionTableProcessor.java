@@ -39,7 +39,7 @@ public class DecisionTableProcessor {
     
     // Required column headers for decision tables
     private static final String[] REQUIRED_HEADERS = {
-            "RuleSet", "RuleId", "Condition", "Action"
+            "RuleSet", "Condition", "Action"
     };
     
     /**
@@ -432,13 +432,29 @@ public class DecisionTableProcessor {
                 
                 hasValidSheet = true;
                 
-                // Get the header row
-                Row headerRow = sheet.getRow(0);
+                // Get the header row - check if first row is RuleTable marker
+                Row firstRow = sheet.getRow(0);
+                Row headerRow = firstRow;
+                int headerRowIndex = 0;
+                
+                // Check if first row contains RuleTable marker (Drools format)
+                if (firstRow != null && firstRow.getPhysicalNumberOfCells() > 0) {
+                    Cell firstCell = firstRow.getCell(0);
+                    if (firstCell != null && firstCell.getCellType() == CellType.STRING) {
+                        String firstCellValue = firstCell.getStringCellValue();
+                        if (firstCellValue != null && firstCellValue.startsWith("RuleTable")) {
+                            // This is a Drools decision table format, headers are in row 1
+                            headerRow = sheet.getRow(1);
+                            headerRowIndex = 1;
+                        }
+                    }
+                }
+                
                 if (headerRow == null) {
                     throw new DecisionTableValidationException(
                             "Sheet '" + sheetName + "' in file '" + filename + "' has no header row. " +
                             "A valid decision table must have a header row with the required column names. " +
-                            "Please ensure the first row of your worksheet contains the necessary headers: " + 
+                            "Please ensure the " + (headerRowIndex == 0 ? "first" : "second") + " row of your worksheet contains the necessary headers: " + 
                             String.join(", ", REQUIRED_HEADERS) + ".",
                             filename,
                             sheetName,
@@ -472,8 +488,11 @@ public class DecisionTableProcessor {
                             ValidationErrorType.MISSING_HEADERS);
                 }
                 
-                // Check that there are data rows
-                if (sheet.getPhysicalNumberOfRows() <= 1) {
+                // Check that there are data rows (account for header row offset and potential attribute row)
+                // For Drools format: RuleTable marker + header row + attribute row + at least one data row = 4 rows minimum
+                // For standard format: header row + at least one data row = 2 rows minimum
+                int expectedMinRows = headerRowIndex + 3; // Account for potential attribute row in Drools format
+                if (sheet.getPhysicalNumberOfRows() < expectedMinRows) {
                     throw new DecisionTableValidationException(
                             "Sheet '" + sheetName + "' in file '" + filename + "' contains headers but no data rows. " +
                             "A valid decision table must contain at least one data row after the header row. " +
@@ -485,8 +504,10 @@ public class DecisionTableProcessor {
                 
                 // For normal files, validate a sample of data rows (basic structure validation)
                 // Only check up to 100 rows to avoid excessive memory usage
-                int maxRowsToCheck = Math.min(100, sheet.getPhysicalNumberOfRows() - 1);
-                for (int rowNum = 1; rowNum <= maxRowsToCheck; rowNum++) {
+                // Data rows start after header row and potential attribute row
+                int dataRowStart = headerRowIndex + 2; // Account for attribute row in Drools format
+                int maxRowsToCheck = Math.min(100, sheet.getPhysicalNumberOfRows() - dataRowStart);
+                for (int rowNum = dataRowStart; rowNum < dataRowStart + maxRowsToCheck; rowNum++) {
                     Row row = sheet.getRow(rowNum);
                     if (row == null) {
                         continue;
@@ -723,10 +744,9 @@ public class DecisionTableProcessor {
                         
                         Cell targetCell = targetRow.createCell(j);
                         
-                        // Copy cell value (skip style for streaming workbooks to improve performance)
-                        if (!useStreamingApi) {
-                            targetCell.setCellStyle(sourceCell.getCellStyle());
-                        }
+                        // Skip style copying to avoid workbook compatibility issues
+                        // Styles from source workbook cannot be directly applied to target workbook
+                        // For decision table processing, cell values are more important than formatting
                         
                         switch (sourceCell.getCellType()) {
                             case STRING:
