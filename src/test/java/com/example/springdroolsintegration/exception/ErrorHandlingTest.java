@@ -180,29 +180,35 @@ public class ErrorHandlingTest {
     @Test
     @DisplayName("Test GlobalExceptionHandler with MaxUploadSizeExceededException")
     public void testGlobalExceptionHandlerWithMaxUploadSizeExceededException() throws Exception {
-        // Create an extremely large file (50MB) to definitely exceed the limit
-        byte[] largeContent = new byte[50 * 1024 * 1024]; // 50MB
+        // Since MockMvc doesn't properly enforce multipart size limits in tests,
+        // we'll test the GlobalExceptionHandler directly by creating a mock request
+        // and manually triggering the exception handler
         
-        // Fill with valid DRL content pattern to pass basic validation
-        String drlHeader = "package com.example.rules;\nrule \"TestRule\"\nwhen\n    $fact : Object()\nthen\n    System.out.println(\"Test\");\nend\n";
-        byte[] headerBytes = drlHeader.getBytes();
-        System.arraycopy(headerBytes, 0, largeContent, 0, Math.min(headerBytes.length, largeContent.length));
+        MaxUploadSizeExceededException exception = new MaxUploadSizeExceededException(1024L);
         
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "test.drl",
-                MediaType.TEXT_PLAIN_VALUE,
-                largeContent
-        );
+        // Create a mock WebRequest
+        org.springframework.web.context.request.WebRequest mockRequest = 
+            org.mockito.Mockito.mock(org.springframework.web.context.request.WebRequest.class);
         
-        // Perform the upload - this should trigger MaxUploadSizeExceededException
-        mockMvc.perform(MockMvcRequestBuilders.multipart("/api/v1/rules/upload")
-                .file(file))
-                .andExpect(status().isPayloadTooLarge())
-                .andExpect(jsonPath("$.title").value("File Upload Error"))
-                .andExpect(jsonPath("$.status").value(413))
-                .andExpect(jsonPath("$.properties.errorType").value("MAX_UPLOAD_SIZE_EXCEEDED"))
-                .andExpect(jsonPath("$.properties.correlationId").exists());
+        // Get the GlobalExceptionHandler bean from the application context
+        com.example.springdroolsintegration.exception.GlobalExceptionHandler globalExceptionHandler = 
+            new com.example.springdroolsintegration.exception.GlobalExceptionHandler();
+        
+        // Call the exception handler directly
+        org.springframework.http.ResponseEntity<org.springframework.http.ProblemDetail> response = 
+            globalExceptionHandler.handleMaxUploadSizeExceededException(exception, mockRequest);
+        
+        // Verify the response
+        assertEquals(413, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+        assertEquals("File Upload Error", response.getBody().getTitle());
+        assertEquals(413, response.getBody().getStatus());
+        
+        // Verify properties
+        assertNotNull(response.getBody().getProperties());
+        assertEquals("MAX_UPLOAD_SIZE_EXCEEDED", response.getBody().getProperties().get("errorType"));
+        assertNotNull(response.getBody().getProperties().get("correlationId"));
+        assertNotNull(response.getBody().getProperties().get("timestamp"));
     }
     
     @Test
